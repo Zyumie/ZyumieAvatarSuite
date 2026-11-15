@@ -1,5 +1,0 @@
-Zyumie Avatar Suite 0.3.0
-
-Unity 2022.3 LTS. Dans Package Manager, choisir Add package from disk et sélectionner le package.json à la racine de cette archive.
-Ouvrir ensuite Zyumie > Avatar Suite. Installer séparément le VRChat Avatars SDK.
-Lire Documentation/README_FR.md et Documentation/TEST_CHECKLIST.md avant de publier.
