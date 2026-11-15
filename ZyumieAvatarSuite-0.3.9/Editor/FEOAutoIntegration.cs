@@ -23,6 +23,7 @@ namespace Zyumie.AvatarSuite
         private const string FEOName = "FEO";
         private const string EyesParameter = "EyesTracking";
         private const string GesturesParameter = "MainGestures";
+        private const string BuiltInEyeTrackingParameter = "UserEyeTracking";
         private const string EyeLayerName = "Zyumie_FEO_EyesTracking";
         private const string GestureLayerName = "Zyumie_FEO_MainGestures";
         private const string OutputRoot = "Assets/ZyumieAvatarSuite/Generated/FEO";
@@ -55,6 +56,8 @@ namespace Zyumie.AvatarSuite
             var fingers = FindFingerBones(root);
             if (eyes.Count != 2)
                 return "ERREUR : les deux os oculaires ne sont pas configurés dans le Descriptor. Aucun asset n'a été assigné. Vérifie Eye Look > Left Eye / Right Eye.";
+            if (!EnsureEyeLookEnabled(descriptor, eyes, out string eyeSetupError))
+                return "ERREUR Eye Look : " + eyeSetupError;
             if (fingers.Count < 4)
                 return "ERREUR : moins de 4 os de doigts ont été détectés. MainGestures n'a pas été généré pour éviter de verrouiller une main incomplète.";
 
@@ -73,6 +76,7 @@ namespace Zyumie.AvatarSuite
                 var gestureController = ClonePlayableController(descriptor, VRCAvatarDescriptor.AnimLayerType.Gesture, folder, "vrc_AvatarV3HandsLayer", report);
 
                 EnsureBoolParameter(fxController, EyesParameter);
+                EnsureBoolParameter(fxController, BuiltInEyeTrackingParameter, false);
                 EnsureBoolParameter(gestureController, GesturesParameter);
                 RemoveLayerIfPresent(fxController, EyeLayerName);
                 RemoveLayerIfPresent(gestureController, GestureLayerName);
@@ -104,10 +108,15 @@ namespace Zyumie.AvatarSuite
                 AssetDatabase.Refresh();
 
                 report.Add("Menu : Expressions > Function > FEO");
-                report.Add("EyesTracking ON : VRChat/OSC eye look + eyelid tracking is restored.");
+                report.Add("Eye Look du Descriptor : activé et vérifié avec les deux références oculaires.");
+                report.Add("Paramètre Animator UserEyeTracking présent dans le FX (Bool, défaut false ; paramètre intégré VRChat, non ajouté aux Expression Parameters).");
+                report.Add("IMPORTANT : UserEyeTracking indique la disponibilité du tracking ; il ne pilote pas directement les os des yeux et ne convertit pas les messages OSC en BlendShapes.");
+                report.Add("EyesTracking ON : le tracking des yeux/paupières est autorisé par VRChat.");
+                report.Add("EyesTracking OFF : le mouvement des yeux/paupières est confié aux animations.");
                 report.Add("EyesTracking OFF : VRChat eye/eyelid tracking is set to Animation by VRCAnimatorTrackingControl.");
                 report.Add("MainGestures ON : left/right finger tracking is restored.");
-                report.Add("MainGestures OFF : finger tracking is switched to Animation and a neutral finger clip overrides controller gestures.");
+                report.Add("MainGestures OFF : les animations des doigts sont remplacées par la pose neutre capturée lors de la configuration.");
+                report.Add("IMPORTANT : MainGestures contrôle les doigts, pas les expressions faciales du FX Animator. Les expressions faciales restent indépendantes.");
                 report.Add("Menus, parameters et controllers source conservés ; les copies sont assignées au Descriptor.");
                 report.Add("FrameEyeOSC continue d'envoyer ses données : le toggle agit sur le comportement de suivi dans l'avatar/VRChat, pas sur l'application externe.");
                 report.Add("Paupières : le trackingEyes natif de VRChat regroupe Eye Look et le clignement. OFF désactive les deux.");
@@ -115,7 +124,7 @@ namespace Zyumie.AvatarSuite
                 report.Add("Teste les quatre états (ON/OFF) avec VRChat Build & Test avant publication.");
                 EditorUtility.SetDirty(fxController);
                 EditorUtility.SetDirty(gestureController);
-                return "ZYUMIE AVATAR SUITE — FEO v0.3.5\n\n" + string.Join("\n", report);
+                return "ZYUMIE AVATAR SUITE — FEO v0.3.9\n\n" + string.Join("\n", report);
             }
             catch (Exception ex)
             {
@@ -146,22 +155,52 @@ namespace Zyumie.AvatarSuite
             return null;
         }
 
+        private static bool EnsureEyeLookEnabled(VRCAvatarDescriptor descriptor, List<Transform> eyes, out string error)
+        {
+            error = null;
+            if (!descriptor || eyes == null || eyes.Count != 2 || !eyes[0] || !eyes[1])
+            {
+                error = "les deux Transform des yeux sont requis.";
+                return false;
+            }
+
+            // Keep the eye references already configured in the Descriptor; fill them only
+            // when the automatic name-based detection supplied a valid pair.
+            var settings = descriptor.customEyeLookSettings;
+            if (!settings.leftEye) settings.leftEye = eyes[0];
+            if (!settings.rightEye) settings.rightEye = eyes[1];
+            if (!settings.leftEye || !settings.rightEye)
+            {
+                error = "les références Left Eye / Right Eye sont incomplètes.";
+                return false;
+            }
+
+            Undo.RecordObject(descriptor, "Zyumie Enable VRChat Eye Look");
+            descriptor.customEyeLookSettings = settings;
+            descriptor.enableEyeLook = true;
+            EditorUtility.SetDirty(descriptor);
+            return true;
+        }
+
         private static List<Transform> FindEyeBones(GameObject root, VRCAvatarDescriptor descriptor)
         {
-            var found = new List<Transform>();
             var so = new SerializedObject(descriptor);
             so.Update();
-            AddTransform(found, so.FindProperty("customEyeLookSettings.leftEye"));
-            AddTransform(found, so.FindProperty("customEyeLookSettings.rightEye"));
-            if (found.Count < 2)
-            {
-                var all = root.GetComponentsInChildren<Transform>(true);
-                var left = all.FirstOrDefault(t => Eq(t.name, "Eye.L") || Eq(t.name, "LeftEye"));
-                var right = all.FirstOrDefault(t => Eq(t.name, "Eye.R") || Eq(t.name, "RightEye"));
-                if (left && !found.Contains(left)) found.Add(left);
-                if (right && !found.Contains(right)) found.Add(right);
-            }
-            return found.Where(t => t && t != root.transform && t.IsChildOf(root.transform)).Distinct().Take(2).ToList();
+            Transform left = so.FindProperty("customEyeLookSettings.leftEye")?.objectReferenceValue as Transform;
+            Transform right = so.FindProperty("customEyeLookSettings.rightEye")?.objectReferenceValue as Transform;
+
+            var all = root.GetComponentsInChildren<Transform>(true);
+            if (!left)
+                left = all.FirstOrDefault(t => Eq(t.name, "Eye.L") || Eq(t.name, "LeftEye") ||
+                                               Eq(t.name, "Eye_Left") || Eq(t.name, "eye_l"));
+            if (!right)
+                right = all.FirstOrDefault(t => Eq(t.name, "Eye.R") || Eq(t.name, "RightEye") ||
+                                                Eq(t.name, "Eye_Right") || Eq(t.name, "eye_r"));
+
+            var result = new List<Transform>();
+            if (left && left != root.transform && left.IsChildOf(root.transform)) result.Add(left);
+            if (right && right != root.transform && right.IsChildOf(root.transform) && right != left) result.Add(right);
+            return result;
         }
 
         private static void AddTransform(List<Transform> list, SerializedProperty property)
@@ -311,14 +350,20 @@ namespace Zyumie.AvatarSuite
         {
             var copy = original ? UnityEngine.Object.Instantiate(original) : ScriptableObject.CreateInstance<VRCExpressionParameters>();
             copy.name = "Zyumie_FEO_ExpressionParameters";
-            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath(folder + "/Zyumie_FEO_ExpressionParameters.asset"));
             var list = copy.parameters != null ? copy.parameters.ToList() : new List<VRCExpressionParameters.Parameter>();
             UpsertBool(list, EyesParameter);
             UpsertBool(list, GesturesParameter);
             copy.parameters = list.ToArray();
 
-            int cost = list.Sum(p => p.valueType == VRCExpressionParameters.ValueType.Bool ? 1 : 8);
-            report.Add("Expression Parameters : coût estimé " + cost + "/256 bits" + (cost > 256 ? " — dépassement à corriger" : ""));
+            int syncedCost = list.Where(p => p.networkSynced)
+                .Sum(p => p.valueType == VRCExpressionParameters.ValueType.Bool ? 1 : 8);
+            int unsyncedCount = list.Count(p => !p.networkSynced);
+            report.Add("Expression Parameters : coût synchronisé " + syncedCost + "/256 bits (seuls les paramètres Network Synced comptent).");
+            report.Add("Paramètres non synchronisés ignorés dans le budget : " + unsyncedCount + ".");
+            if (syncedCost > 256)
+                throw new InvalidOperationException("Budget Expression Parameters dépassé : " + syncedCost +
+                    "/256 bits synchronisés. Réduis ou désynchronise certains paramètres dans ton asset source avant de configurer FEO. Aucun nouveau Descriptor n'a été assigné.");
+            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath(folder + "/Zyumie_FEO_ExpressionParameters.asset"));
             EditorUtility.SetDirty(copy);
             return copy;
         }
@@ -417,7 +462,7 @@ namespace Zyumie.AvatarSuite
             throw new InvalidOperationException("Slot " + layerType + " non trouvé lors de l'assignation.");
         }
 
-        private static void EnsureBoolParameter(AnimatorController controller, string name)
+        private static void EnsureBoolParameter(AnimatorController controller, string name, bool defaultValue = true)
         {
             var parameters = controller.parameters;
             int index = Array.FindIndex(parameters, p => p.name == name);
@@ -425,10 +470,10 @@ namespace Zyumie.AvatarSuite
             {
                 if (parameters[index].type != AnimatorControllerParameterType.Bool)
                     throw new InvalidOperationException("Le paramètre Animator « " + name + " » existe mais n'est pas Bool.");
-                parameters[index].defaultBool = true;
+                parameters[index].defaultBool = defaultValue;
                 controller.parameters = parameters;
             }
-            else controller.AddParameter(new AnimatorControllerParameter { name = name, type = AnimatorControllerParameterType.Bool, defaultBool = true });
+            else controller.AddParameter(new AnimatorControllerParameter { name = name, type = AnimatorControllerParameterType.Bool, defaultBool = defaultValue });
         }
 
         private static void RemoveLayerIfPresent(AnimatorController controller, string name)

@@ -1,6 +1,7 @@
 using System.Linq;
-using System.Reflection;
-using System.Collections;
+using System.Collections.Generic;
+using VRC.SDK3A.Editor;
+using VRC.SDK3.Avatars.Components;
 using System;
 using System.IO;
 using UnityEditor;
@@ -28,7 +29,7 @@ namespace Zyumie.AvatarSuite
         {
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField("ZYUMIE AVATAR SUITE", EditorStyles.largeLabel);
-            EditorGUILayout.LabelField("v0.3.5 • VRChat • PCVR • Android / Quest • Steam Frame", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("v0.3.9 • VRChat • PCVR • Android / Quest • Steam Frame", EditorStyles.miniLabel);
             EditorGUILayout.Space(8);
             avatar = (GameObject)EditorGUILayout.ObjectField("Avatar Root", avatar, typeof(GameObject), true);
             if (!avatar && Selection.activeGameObject) avatar = Selection.activeGameObject;
@@ -95,10 +96,12 @@ namespace Zyumie.AvatarSuite
 
         private void DrawTracking()
         {
-            EditorGUILayout.HelpBox("FEO utilise le comportement natif VRChat Animator Tracking Control pour basculer Eye Look et le tracking des doigts.", MessageType.Info);
+            EditorGUILayout.HelpBox("FEO vérifie Eye Look, ajoute UserEyeTracking au FX Animator et configure les contrôles natifs VRChat. MainGestures agit sur les doigts ; les expressions faciales du FX Animator restent indépendantes.", MessageType.Info);
             if (GUILayout.Button("Configurer automatiquement Function > FEO", GUILayout.Height(38)))
                 report = FEOAutoIntegration.Configure(avatar);
-            if (GUILayout.Button("Diagnostiquer Eye Look / FrameEyeOSC", GUILayout.Height(32)))
+            if (GUILayout.Button("Ouvrir le simulateur des yeux à la souris", GUILayout.Height(34)))
+                FEOMouseEyeSimulator.Open(avatar);
+            if (GUILayout.Button("Diagnostiquer Eye Look / OSC / Animator", GUILayout.Height(32)))
                 report = AvatarOperations.InspectTracking(avatar);
             if (GUILayout.Button("Désactiver les booléens Face Tracking du Descriptor"))
             {
@@ -109,7 +112,7 @@ namespace Zyumie.AvatarSuite
 
         private void DrawPlatforms()
         {
-            EditorGUILayout.HelpBox("Le bouton CROSS-PLATFORM garde cet avatar comme base PC, crée une variante Android et l’associe via les Per-Platform Overrides du SDK VRChat 3.8.1+.", MessageType.Info);
+            EditorGUILayout.HelpBox("Nécessite VRChat SDK - Avatars 3.8.1+. Le bouton garde cet avatar comme base PC, crée une variante Android et l’enregistre avec l’API officielle PerPlatformOverrides.", MessageType.Info);
             if (GUILayout.Button("Créer une copie Windows / PCVR")) MakeCopy("_Windows_PCVR");
             if (GUILayout.Button("Créer une copie Android / Quest / Steam Frame")) MakeCopy("_Android_Quest_SteamFrame");
             if (GUILayout.Button("Créer le pack CROSS-PLATFORM (Windows + Android)", GUILayout.Height(38))) MakeCrossPlatform();
@@ -131,7 +134,7 @@ namespace Zyumie.AvatarSuite
 
             try
             {
-                Component baseDescriptor = FindAvatarDescriptor(baseAvatar);
+                VRCAvatarDescriptor baseDescriptor = FindAvatarDescriptor(baseAvatar);
                 if (!baseDescriptor)
                 {
                     report = "Aucun VRCAvatarDescriptor trouvé sur l'avatar sélectionné. Sélectionne sa racine.";
@@ -146,7 +149,7 @@ namespace Zyumie.AvatarSuite
                 if (created)
                     androidAvatar = AvatarOperations.CreatePlatformCopy(baseAvatar, suffix);
 
-                Component androidDescriptor = FindAvatarDescriptor(androidAvatar);
+                VRCAvatarDescriptor androidDescriptor = FindAvatarDescriptor(androidAvatar);
                 if (!androidDescriptor)
                 {
                     if (created) Undo.DestroyObjectImmediate(androidAvatar);
@@ -174,10 +177,10 @@ namespace Zyumie.AvatarSuite
             }
         }
 
-        private static Component FindAvatarDescriptor(GameObject root)
+        private static VRCAvatarDescriptor FindAvatarDescriptor(GameObject root)
         {
             if (!root) return null;
-            return root.GetComponents<Component>().FirstOrDefault(c => c && c.GetType().Name == "VRCAvatarDescriptor");
+            return root.GetComponents<VRCAvatarDescriptor>().FirstOrDefault();
         }
 
         private static GameObject FindSiblingOrRoot(GameObject source, string objectName)
@@ -192,66 +195,33 @@ namespace Zyumie.AvatarSuite
                 .FirstOrDefault(go => go != source && go.name == objectName);
         }
 
-        // Uses VRChat's documented public editor API without hard-linking this package
-        // to a particular SDK assembly version at compile time.
-        private static void SetAndroidOverride(GameObject baseAvatar, GameObject androidAvatar, Component androidDescriptor)
+        private static void SetAndroidOverride(GameObject baseAvatar, GameObject androidAvatar, VRCAvatarDescriptor androidDescriptor)
         {
-            Type api = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(GetLoadableTypes)
-                .FirstOrDefault(t => t != null && t.FullName == "VRC.SDK3A.Editor.PerPlatformOverrides");
-            if (api == null)
-                throw new InvalidOperationException("PerPlatformOverrides introuvable. Mets à jour VRChat SDK - Avatars vers la version 3.8.1 ou supérieure.");
+            // Official VRChat SDK API (Avatars SDK 3.8.1+).
+            var current = PerPlatformOverrides.GetPlatformOverrides(baseAvatar);
+            var updated = current != null
+                ? new List<PerPlatformOverrides.Option>(current)
+                : new List<PerPlatformOverrides.Option>();
 
-            MethodInfo get = api.GetMethod("GetPlatformOverrides", BindingFlags.Public | BindingFlags.Static);
-            MethodInfo set = api.GetMethod("SetPlatformOverrides", BindingFlags.Public | BindingFlags.Static);
-            if (get == null || set == null)
-                throw new InvalidOperationException("L'API publique GetPlatformOverrides / SetPlatformOverrides est absente du SDK installé.");
-
-            IList current = get.Invoke(null, new object[] { baseAvatar }) as IList;
-            ParameterInfo listParameter = set.GetParameters().FirstOrDefault(p => p.ParameterType.IsGenericType);
-            if (listParameter == null)
-                throw new InvalidOperationException("Signature SetPlatformOverrides non reconnue dans cette version du SDK.");
-
-            Type listType = listParameter.ParameterType;
-            Type optionType = listType.GetGenericArguments()[0];
-            FieldInfo platformField = optionType.GetField("platform");
-            FieldInfo avatarField = optionType.GetField("avatar");
-            if (platformField == null || avatarField == null)
-                throw new InvalidOperationException("Structure PerPlatformOverrides.Option non reconnue.");
-            if (!avatarField.FieldType.IsInstanceOfType(androidDescriptor))
-                throw new InvalidOperationException("Le Descriptor de la copie n'est pas du type attendu par le SDK VRChat.");
-
-            IList updated = Activator.CreateInstance(listType) as IList;
-            if (updated == null)
-                throw new InvalidOperationException("Impossible de créer la liste des overrides.");
-
-            if (current != null)
+            updated.RemoveAll(option => option.platform == BuildTarget.Android);
+            updated.Add(new PerPlatformOverrides.Option
             {
-                foreach (object item in current)
-                {
-                    if (item == null) continue;
-                    object platform = platformField.GetValue(item);
-                    if (!Equals(platform, BuildTarget.Android)) updated.Add(item);
-                }
-            }
-
-            object option = Activator.CreateInstance(optionType);
-            platformField.SetValue(option, BuildTarget.Android);
-            avatarField.SetValue(option, androidDescriptor);
-            updated.Add(option);
+                platform = BuildTarget.Android,
+                avatar = androidDescriptor
+            });
 
             Undo.RegisterCompleteObjectUndo(baseAvatar, "Zyumie Configure Android Platform Override");
-            set.Invoke(null, new object[] { baseAvatar, updated });
+            PerPlatformOverrides.SetPlatformOverrides(baseAvatar, updated);
+
+            var verified = PerPlatformOverrides.GetPlatformOverrides(baseAvatar);
+            bool found = verified != null && verified.Any(option =>
+                option.platform == BuildTarget.Android && option.avatar == androidDescriptor);
+            if (!found)
+                throw new InvalidOperationException("Le SDK n'a pas confirmé l'enregistrement de la variante Android.");
+
             EditorUtility.SetDirty(baseAvatar);
             EditorUtility.SetDirty(androidAvatar);
             EditorUtility.SetDirty(androidDescriptor);
-        }
-
-        private static Type[] GetLoadableTypes(Assembly assembly)
-        {
-            try { return assembly.GetTypes(); }
-            catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null).ToArray(); }
-            catch { return new Type[0]; }
         }
 
         private void ExportReport()
