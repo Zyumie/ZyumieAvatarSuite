@@ -1,8 +1,0 @@
-{
-  "name": "fr.zyumie.avatar-suite",
-  "version": "0.2.0",
-  "displayName": "Zyumie Avatar Suite",
-  "description": "VRChat avatar diagnostics, safe mobile preparation and eye-tracking validation tools.",
-  "unity": "2022.3",
-  "author": { "name": "Zyumie" }
-}

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -7,7 +6,7 @@ namespace Zyumie.AvatarSuite
 {
     internal sealed class AvatarMetrics
     {
-        public int triangles, skinnedMeshes, basicMeshes, materialSlots, bones;
+        public int triangles, vertices, skinnedMeshes, basicMeshes, materialSlots, bones;
         public int animators, lights, particleSystems, physBones, physBoneColliders;
         public int contacts, constraints, lineRenderers, trailRenderers, audioSources, missingScripts;
         public int blendShapes, uniqueTextures;
@@ -22,12 +21,11 @@ namespace Zyumie.AvatarSuite
             var m = new AvatarMetrics();
             if (!root) return m;
 
-            var renderers = root.GetComponentsInChildren<Renderer>(true);
             var textureSet = new HashSet<Texture>();
             Bounds bounds = new Bounds(root.transform.position, Vector3.zero);
             bool hasBounds = false;
 
-            foreach (var renderer in renderers)
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
             {
                 if (renderer is SkinnedMeshRenderer smr)
                 {
@@ -35,6 +33,7 @@ namespace Zyumie.AvatarSuite
                     if (smr.sharedMesh)
                     {
                         m.triangles += CountTriangles(smr.sharedMesh);
+                        m.vertices += smr.sharedMesh.vertexCount;
                         m.blendShapes += smr.sharedMesh.blendShapeCount;
                         m.bones += smr.bones != null ? smr.bones.Length : 0;
                     }
@@ -43,7 +42,11 @@ namespace Zyumie.AvatarSuite
                 {
                     m.basicMeshes++;
                     var mf = renderer.GetComponent<MeshFilter>();
-                    if (mf && mf.sharedMesh) m.triangles += CountTriangles(mf.sharedMesh);
+                    if (mf && mf.sharedMesh)
+                    {
+                        m.triangles += CountTriangles(mf.sharedMesh);
+                        m.vertices += mf.sharedMesh.vertexCount;
+                    }
                 }
 
                 if (renderer.sharedMaterials != null)
@@ -112,6 +115,7 @@ namespace Zyumie.AvatarSuite
             b.AppendLine("");
             b.AppendLine("Géométrie");
             b.AppendLine("  Triangles : " + m.triangles.ToString("N0"));
+            b.AppendLine("  Sommets : " + m.vertices.ToString("N0"));
             b.AppendLine("  Skinned Meshes : " + m.skinnedMeshes);
             b.AppendLine("  Basic Meshes : " + m.basicMeshes);
             b.AppendLine("  Material Slots : " + m.materialSlots);
@@ -135,7 +139,7 @@ namespace Zyumie.AvatarSuite
             b.AppendLine("  Textures uniques : " + m.uniqueTextures);
             b.AppendLine("  Mémoire brute estimée RGBA32 : " + (m.estimatedTextureBytes / 1048576f).ToString("0.0") + " MB");
             b.AppendLine("");
-            b.AppendLine("Repères VRChat Mobile (Android / Quest)");
+            b.AppendLine("Repères mobiles VRChat (indicatifs uniquement)");
             b.AppendLine("  Triangles : Excellent ≤ 7 500 | Good ≤ 10 000 | Medium ≤ 15 000 | Poor ≤ 20 000");
             b.AppendLine("  Skinned Meshes : 1 / 1 / 2 / 2");
             b.AppendLine("  Basic Meshes : 1 / 1 / 2 / 2");
@@ -144,8 +148,9 @@ namespace Zyumie.AvatarSuite
             b.AppendLine("  Os : 75 / 90 / 150 / 150");
             b.AppendLine("  Particle Systems : 0 / 0 / 0 / 2");
             b.AppendLine("");
-            b.AppendLine("Ces repères ne constituent PAS un calcul officiel du rang VRChat. Seul le SDK VRChat Builder donne le résultat final.");
+            b.AppendLine("Ces repères ne calculent PAS le rang officiel VRChat. Le SDK VRChat Builder donne le résultat final.");
             b.AppendLine("La mémoire des textures est une estimation brute, pas la taille compressée de l'upload.");
+            b.AppendLine("La réduction polygonale automatique n'est pas incluse dans cette version.");
             return b.ToString();
         }
     }
