@@ -63,7 +63,7 @@ namespace Zyumie.AvatarSuite
                 EnsureFolder("Assets/ZyumieAvatarSuite");
                 EnsureFolder("Assets/ZyumieAvatarSuite/Generated");
                 EnsureFolder(OutputRoot);
-                string folder = OutputRoot + "/" + Sanitize(root.name) + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string folder = OutputRoot + "/" + SafeName(root.name) + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 EnsureFolder(folder);
 
                 var report = new List<string>();
