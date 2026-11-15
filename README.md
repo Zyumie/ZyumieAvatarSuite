@@ -43,7 +43,6 @@ Find everything you need to understand, use and contribute to the project.
 |---|---|
 | [📜 License](LICENSE) | Usage, redistribution and modification rights. |
 | [🤝 Contributing](CONTRIBUTING.md) | How to contribute to the project. |
-| [📋 Changelog](CHANGELOG.md) | Development history and updates. |
 | [ℹ️ Notice](NOTICE) | Credits and third-party notices. |
 
 ---
