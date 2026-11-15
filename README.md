@@ -1,130 +1,94 @@
 # 💜 Zyumie Avatar Suite
 
-**The all-in-one Unity Editor toolkit for VRChat avatar optimization, cross-platform compatibility and Steam Frame tracking integration.**
+**An all-in-one Unity Editor toolkit for VRChat avatar optimization, cross-platform compatibility and Steam Frame tracking integration.**
 
-Zyumie Avatar Suite aims to simplify VRChat avatar preparation through an automated, modular and non-destructive Unity Editor workflow.
+Zyumie Avatar Suite aims to simplify avatar preparation through automated diagnostics, optimization tools and tracking integration.
 
-The goal is to help creators prepare optimized avatars for PCVR, Meta Quest and Steam Frame, while preserving their appearance, expressions and tracking capabilities.
+Our goal is to make VRChat avatars easier to optimize and prepare for **PCVR, Meta Quest and Steam Frame**, while preserving their appearance, expressions and tracking capabilities.
 
-> 🚧 **Project status: Work in Progress**
->
-> This project is under active development. Not all planned features are currently implemented or production-ready.
+<details>
+<summary>🚧 Project Status</summary>
 
----
+**Work in Progress**
 
-## ✨ Planned Features
+Zyumie Avatar Suite is currently under development. Features and compatibility are subject to change.
 
-### 🔧 Avatar Optimizer
-- Automatic avatar analysis.
-- Mesh and polygon statistics.
-- Material and texture analysis.
-- PhysBone and Collider diagnostics.
-- Missing Script detection.
-- Safe and selective cleanup.
-- Before-and-after optimization reports.
-- Automatic backups before modifications.
-
-### 🌐 Cross-Platform Compatibility
-Prepare separate avatar configurations for:
-
-- 🖥️ PCVR
-- 📱 Meta Quest / Android
-- 🎮 Steam Frame standalone
-
-The toolkit aims to detect platform incompatibilities and suggest or apply safe optimizations.
-
-### 👁️ Steam Frame Tracking Bridge
-Integration-oriented tools for:
-
-- FrameEyeOSC compatibility diagnostics.
-- VRChat native OSC eye tracking configuration.
-- Eye bone detection.
-- Eyelid BlendShape configuration.
-- Tracking parameter diagnostics.
-- Automatic fallback to simulated eye movement when tracking is unavailable.
-
-### 👄 Facial Expressions
-- Preserve standard facial expressions.
-- Preserve viseme-based mouth animations.
-- Diagnose existing face tracking systems.
-- Assist with Unified Expressions compatibility.
-- Avoid deleting expression systems without user confirmation.
+</details>
 
 ---
 
-## 🛡️ Safety First
+## ✨ Core Features
 
-Zyumie Avatar Suite is designed around a non-destructive workflow.
+| Module | Description |
+|---|---|
+| 🔧 Avatar Optimizer | Analyze and optimize avatar performance. |
+| 🌐 Cross-Platform | Prepare avatars for PCVR and Android-based platforms. |
+| 👁️ Tracking Bridge | Assist with FrameEyeOSC and VRChat eye tracking integration. |
+| 👄 Facial Expressions | Preserve and configure facial expressions and visemes. |
+| 📊 Diagnostics | Detect compatibility issues and generate reports. |
 
-- Original avatars should remain untouched.
-- Modifications should be previewable.
-- Backups should be created before destructive operations.
-- Unsupported configurations should be reported instead of silently modified.
-- Users should be able to choose which optimizations to apply.
+### 🎯 Supported Platforms
+
+- 🖥️ **PCVR** — Full desktop avatar configuration.
+- 📱 **Meta Quest** — Android-compatible avatar configuration.
+- 🎮 **Steam Frame** — Standalone Android compatibility and tracking integration where supported.
+
+---
+
+## 📚 Documentation
+
+Find everything you need to understand, use and contribute to the project.
+
+| Document | Description |
+|---|---|
+| [📜 License](LICENSE) | Usage, redistribution and modification rights. |
+| [🤝 Contributing](CONTRIBUTING.md) | How to contribute to the project. |
+| [📋 Changelog](CHANGELOG.md) | Development history and updates. |
+| [ℹ️ Notice](NOTICE) | Credits and third-party notices. |
 
 ---
 
 ## 🧰 Requirements
 
-Planned development environment:
-
 - Unity 2022.3 LTS
 - VRChat SDK - Avatars
 - Compatible Unity Editor installation
-- C# development environment
 
-Additional SDKs and integrations may be required for specific features.
-
----
-
-## 📦 Installation
-
-Installation instructions will be provided as soon as the first stable release is available.
-
-For development, clone the repository and open the Unity package in a compatible Unity project.
+Additional dependencies may be required depending on the selected features.
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Development Roadmap
 
-- [ ] Unity Editor main interface
+- [ ] Complete Unity Editor interface
 - [ ] Avatar diagnostic engine
-- [ ] Automatic backup system
-- [ ] Safe avatar cleanup
-- [ ] Mesh and material optimization
-- [ ] PCVR avatar validation
-- [ ] Android avatar validation
+- [ ] Non-destructive backup and restore
+- [ ] Automated avatar optimization
+- [ ] PCVR compatibility validation
+- [ ] Android compatibility validation
 - [ ] Steam Frame compatibility diagnostics
-- [ ] FrameEyeOSC integration assistant
-- [ ] Native VRChat OSC eye tracking support
-- [ ] Eyelid and BlendShape configuration
-- [ ] Facial expression preservation
+- [ ] FrameEyeOSC integration
+- [ ] Native VRChat OSC eye tracking
+- [ ] Facial expression and viseme preservation
 - [ ] Automated validation reports
-- [ ] Stable public release
+- [ ] First stable release
 
 ---
 
-## 🤝 Contributing
+## 💜 Credits
 
-Bug reports, suggestions and contributions are welcome.
+**Created and maintained by Zyumie.**
 
-Please provide:
-- Unity version.
-- VRChat SDK version.
-- Relevant Console errors.
-- A description of the issue.
-- Steps to reproduce the problem.
+Developed with assistance from OpenAI ChatGPT for architecture, documentation, code drafting and debugging.
 
-Never upload private avatars, personal assets or proprietary files without permission.
+Community contributions and improvements are welcome!
 
 ---
 
-## 📜 License
+<div align="center">
 
-License: To be determined.
-
----
-
-**Developed by Zyumie** 💜
+**Developed with ❤️ by Zyumie**
 
 *Making VRChat avatar optimization and tracking integration easier.*
+
+</div>
