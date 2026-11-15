@@ -9,7 +9,7 @@ Our goal is to make avatars easier to prepare for **PCVR, Meta Quest and Steam F
 <details>
 <summary>🚧 Project Status</summary>
 
-**Work in Progress — v0.4.1**
+**Work in Progress — v0.4.0**
 
 Zyumie Avatar Suite is actively under development.
 
