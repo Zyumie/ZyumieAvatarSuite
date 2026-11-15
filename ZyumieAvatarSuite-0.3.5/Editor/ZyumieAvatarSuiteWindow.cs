@@ -1,3 +1,7 @@
+using System.Linq;
+using System.Reflection;
+using System.Collections;
+using System;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -105,11 +109,11 @@ namespace Zyumie.AvatarSuite
 
         private void DrawPlatforms()
         {
-            EditorGUILayout.HelpBox("Windows = PCVR et Steam Frame en PC streaming. Android = Quest et Steam Frame autonome. Deux cibles de build distinctes.", MessageType.Info);
+            EditorGUILayout.HelpBox("Le bouton CROSS-PLATFORM garde cet avatar comme base PC, crée une variante Android et l’associe via les Per-Platform Overrides du SDK VRChat 3.8.1+.", MessageType.Info);
             if (GUILayout.Button("Créer une copie Windows / PCVR")) MakeCopy("_Windows_PCVR");
             if (GUILayout.Button("Créer une copie Android / Quest / Steam Frame")) MakeCopy("_Android_Quest_SteamFrame");
             if (GUILayout.Button("Créer le pack CROSS-PLATFORM (Windows + Android)", GUILayout.Height(38))) MakeCrossPlatform();
-            EditorGUILayout.HelpBox("Aucun composant n'est retiré automatiquement. Vérifie Windows et Android séparément avec VRChat SDK Builder.", MessageType.Warning);
+            EditorGUILayout.HelpBox("Le bouton CROSS-PLATFORM ne publie rien : vérifie les deux variantes puis utilise Multi-Platform Build & Publish dans le SDK.", MessageType.Warning);
         }
 
         private void MakeCopy(string suffix)
@@ -122,15 +126,132 @@ namespace Zyumie.AvatarSuite
 
         private void MakeCrossPlatform()
         {
-            var source = avatar;
-            if (!source) return;
-            var windows = AvatarOperations.CreatePlatformCopy(source, "_Windows_PCVR");
-            var android = AvatarOperations.CreatePlatformCopy(source, "_Android_Quest_SteamFrame");
-            Selection.objects = new UnityEngine.Object[] { windows, android };
-            report = "Pack cross-platform créé depuis la même source :\n" +
-                "• " + windows.name + " (Windows / PCVR / Steam Frame PC streaming)\n" +
-                "• " + android.name + " (Android / Quest / Steam Frame autonome)\n\n" +
-                "Les deux copies sont indépendantes. Pour publier comme variantes de plateforme, utilise le même Blueprint ID et les overrides de plateforme VRChat, puis valide chaque build séparément.";
+            GameObject baseAvatar = avatar;
+            if (!baseAvatar) return;
+
+            try
+            {
+                Component baseDescriptor = FindAvatarDescriptor(baseAvatar);
+                if (!baseDescriptor)
+                {
+                    report = "Aucun VRCAvatarDescriptor trouvé sur l'avatar sélectionné. Sélectionne sa racine.";
+                    return;
+                }
+
+                const string suffix = "_Android_Quest_SteamFrame";
+                string androidName = baseAvatar.name + suffix;
+                GameObject androidAvatar = FindSiblingOrRoot(baseAvatar, androidName);
+                bool created = androidAvatar == null;
+
+                if (created)
+                    androidAvatar = AvatarOperations.CreatePlatformCopy(baseAvatar, suffix);
+
+                Component androidDescriptor = FindAvatarDescriptor(androidAvatar);
+                if (!androidDescriptor)
+                {
+                    if (created) Undo.DestroyObjectImmediate(androidAvatar);
+                    report = "La copie Android ne contient pas de VRCAvatarDescriptor. Override non configuré.";
+                    return;
+                }
+
+                SetAndroidOverride(baseAvatar, androidAvatar, androidDescriptor);
+                avatar = baseAvatar;
+                Selection.activeGameObject = baseAvatar;
+
+                report = "CONFIGURATION CROSS-PLATFORM TERMINÉE\n\n" +
+                    "Avatar principal (PC / Windows) : " + baseAvatar.name + "\n" +
+                    "Variante Android : " + androidAvatar.name + "\n\n" +
+                    "La variante Android est associée à l'avatar principal via l'API officielle Per-Platform Overrides du SDK VRChat.\n" +
+                    "Les deux variantes sont destinées à être publiées sous le même Avatar ID avec Multi-Platform Build & Publish.\n\n" +
+                    (created ? "Copie Android créée." : "Copie Android existante réutilisée.") +
+                    "\nAucun Blueprint ID n'a été modifié. Vérifie les deux versions dans le SDK avant publication.";
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                report = "Échec de la configuration CROSS-PLATFORM :\n" + ex.GetBaseException().Message +
+                    "\nVérifie que VRChat SDK - Avatars 3.8.1 ou plus récent est installé. Aucune publication n'a été lancée.";
+            }
+        }
+
+        private static Component FindAvatarDescriptor(GameObject root)
+        {
+            if (!root) return null;
+            return root.GetComponents<Component>().FirstOrDefault(c => c && c.GetType().Name == "VRCAvatarDescriptor");
+        }
+
+        private static GameObject FindSiblingOrRoot(GameObject source, string objectName)
+        {
+            if (source.transform.parent)
+            {
+                Transform found = source.transform.parent.Find(objectName);
+                return found ? found.gameObject : null;
+            }
+
+            return UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects()
+                .FirstOrDefault(go => go != source && go.name == objectName);
+        }
+
+        // Uses VRChat's documented public editor API without hard-linking this package
+        // to a particular SDK assembly version at compile time.
+        private static void SetAndroidOverride(GameObject baseAvatar, GameObject androidAvatar, Component androidDescriptor)
+        {
+            Type api = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(GetLoadableTypes)
+                .FirstOrDefault(t => t != null && t.FullName == "VRC.SDK3A.Editor.PerPlatformOverrides");
+            if (api == null)
+                throw new InvalidOperationException("PerPlatformOverrides introuvable. Mets à jour VRChat SDK - Avatars vers la version 3.8.1 ou supérieure.");
+
+            MethodInfo get = api.GetMethod("GetPlatformOverrides", BindingFlags.Public | BindingFlags.Static);
+            MethodInfo set = api.GetMethod("SetPlatformOverrides", BindingFlags.Public | BindingFlags.Static);
+            if (get == null || set == null)
+                throw new InvalidOperationException("L'API publique GetPlatformOverrides / SetPlatformOverrides est absente du SDK installé.");
+
+            IList current = get.Invoke(null, new object[] { baseAvatar }) as IList;
+            ParameterInfo listParameter = set.GetParameters().FirstOrDefault(p => p.ParameterType.IsGenericType);
+            if (listParameter == null)
+                throw new InvalidOperationException("Signature SetPlatformOverrides non reconnue dans cette version du SDK.");
+
+            Type listType = listParameter.ParameterType;
+            Type optionType = listType.GetGenericArguments()[0];
+            FieldInfo platformField = optionType.GetField("platform");
+            FieldInfo avatarField = optionType.GetField("avatar");
+            if (platformField == null || avatarField == null)
+                throw new InvalidOperationException("Structure PerPlatformOverrides.Option non reconnue.");
+            if (!avatarField.FieldType.IsInstanceOfType(androidDescriptor))
+                throw new InvalidOperationException("Le Descriptor de la copie n'est pas du type attendu par le SDK VRChat.");
+
+            IList updated = Activator.CreateInstance(listType) as IList;
+            if (updated == null)
+                throw new InvalidOperationException("Impossible de créer la liste des overrides.");
+
+            if (current != null)
+            {
+                foreach (object item in current)
+                {
+                    if (item == null) continue;
+                    object platform = platformField.GetValue(item);
+                    if (!Equals(platform, BuildTarget.Android)) updated.Add(item);
+                }
+            }
+
+            object option = Activator.CreateInstance(optionType);
+            platformField.SetValue(option, BuildTarget.Android);
+            avatarField.SetValue(option, androidDescriptor);
+            updated.Add(option);
+
+            Undo.RegisterCompleteObjectUndo(baseAvatar, "Zyumie Configure Android Platform Override");
+            set.Invoke(null, new object[] { baseAvatar, updated });
+            EditorUtility.SetDirty(baseAvatar);
+            EditorUtility.SetDirty(androidAvatar);
+            EditorUtility.SetDirty(androidDescriptor);
+        }
+
+        private static Type[] GetLoadableTypes(Assembly assembly)
+        {
+            try { return assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null).ToArray(); }
+            catch { return new Type[0]; }
         }
 
         private void ExportReport()

@@ -45,15 +45,18 @@ The avatar should be in its intended neutral finger pose before FEO setup, becau
 - If a default FX or Gesture controller is used, the corresponding AV3 sample controller must be present. The tool stops rather than assigning an empty controller when the sample is missing.
 - Review the generated FX/Gesture controller and verify facial expressions, visemes, eyelids, PhysBones and Contacts in Build & Test.
 
-## Platform copies
+## Cross-platform avatar (PC + Android)
 
-In the **Plateformes** tab:
+The **CROSS-PLATFORM** button keeps the selected avatar as the PC base, creates (or reuses) one Android scene copy, and registers that copy through VRChat's public `PerPlatformOverrides` editor API.
 
-- **Windows / PCVR** creates a Windows-target copy (also applicable to Steam Frame PC streaming).
-- **Android / Quest / Steam Frame** creates an Android-target copy (for Quest and Steam Frame standalone).
-- **Créer le pack CROSS-PLATFORM (Windows + Android)** creates both copies from the selected source avatar.
+- Base avatar: Windows / PCVR (also Steam Frame PC streaming).
+- Android override: Quest / Steam Frame standalone.
+- Both variants are configured for the same VRChat avatar entry. The tool does not edit or generate a Blueprint ID.
+- Windows and Android are still separate platform builds; this is not one combined binary.
 
-Windows and Android are separate build targets, not one combined binary. Validate each target separately with VRChat SDK Builder. For platform variants of one avatar, use the same VRChat Blueprint ID and the SDK's platform override workflow.
+**Requirement:** VRChat SDK - Avatars **3.8.1 or newer**, which exposes the public Per-Platform Overrides API. Select the base avatar in VRChat SDK Builder and use **Multi-Platform Build & Publish**. Review and test both variants before uploading.
+
+The button does not automatically optimize or strip platform-incompatible components from the Android copy. Review shaders, materials, textures, polygons, PhysBones and Contacts for Android compatibility yourself.
 
 ## Other tools
 
