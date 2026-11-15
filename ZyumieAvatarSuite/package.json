@@ -1,8 +1,8 @@
 {
   "name": "fr.zyumie.avatar-suite",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "displayName": "Zyumie Avatar Suite",
-  "description": "VRChat avatar diagnostics, safe texture optimization, FEO tracking controls, desktop eye and blink simulation with explicit BlendShape selection, native eye-tracking diagnostics, and PC/Android avatar variants.",
+  "description": "VRChat avatar diagnostics, native Unified Expressions face tracking with safe no-blendshape fallback, gesture facial-layer toggle, safe texture optimization, and PC/Android platform override tools.",
   "unity": "2022.3",
   "author": {
     "name": "Zyumie"

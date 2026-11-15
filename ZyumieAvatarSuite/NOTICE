@@ -1,0 +1,16 @@
+Zyumie Avatar Suite Copyright 2026 Zyumie
+
+This project is distributed under the Apache License, Version 2.0. A
+copy of the license is provided in the LICENSE file.
+
+Project attribution:
+- Project direction and maintenance: Zyumie.
+- AI-assisted development support: OpenAI ChatGPT was used as an
+  assistance tool for brainstorming, architecture discussions,
+  documentation, code drafting and debugging support. Project decisions,
+  integration, testing and releases are managed by the project maintainer.
+
+Third-party components: This project may integrate with or depend on
+third-party software and SDKs. Those components remain subject to their
+own licenses and terms. Their respective notices must be preserved where
+applicable.

@@ -1,7 +1,3 @@
-using System.Linq;
-using System.Collections.Generic;
-using VRC.SDK3A.Editor;
-using VRC.SDK3.Avatars.Components;
 using System;
 using System.IO;
 using UnityEditor;
@@ -22,14 +18,14 @@ namespace Zyumie.AvatarSuite
         public static void Open()
         {
             var window = GetWindow<ZyumieAvatarSuiteWindow>("Zyumie Avatar Suite");
-            window.minSize = new Vector2(600, 680);
+            window.minSize = new Vector2(620, 700);
         }
 
         private void OnGUI()
         {
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField("ZYUMIE AVATAR SUITE", EditorStyles.largeLabel);
-            EditorGUILayout.LabelField("v0.3.9 • VRChat • PCVR • Android / Quest • Steam Frame", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("v0.4.0 • VRChat • PCVR • Android / Quest", EditorStyles.miniLabel);
             EditorGUILayout.Space(8);
             avatar = (GameObject)EditorGUILayout.ObjectField("Avatar Root", avatar, typeof(GameObject), true);
             if (!avatar && Selection.activeGameObject) avatar = Selection.activeGameObject;
@@ -58,7 +54,7 @@ namespace Zyumie.AvatarSuite
                 if (GUILayout.Button("Exporter .txt")) ExportReport();
             }
             EditorGUILayout.Space(5);
-            EditorGUILayout.HelpBox("Les textures et matériaux sont copiés avant optimisation. Aucun Collider, Rigidbody, PhysBone ou Contact n'est supprimé automatiquement.", MessageType.Info);
+            EditorGUILayout.HelpBox("Les assets source sont conservés. Les optimisations Android restent à valider dans le VRChat SDK Builder.", MessageType.Info);
         }
 
         private void DrawAnalysis()
@@ -69,7 +65,7 @@ namespace Zyumie.AvatarSuite
 
         private void DrawOptimization()
         {
-            EditorGUILayout.HelpBox("Crée une copie de l'avatar dans la scène puis clone ses matériaux et les textures importées compatibles. Les assets source restent inchangés.", MessageType.Info);
+            EditorGUILayout.HelpBox("Crée une copie de l'avatar puis clone ses matériaux et les textures compatibles. Les assets source restent inchangés.", MessageType.Info);
             textureMaxSize = EditorGUILayout.IntPopup("Résolution maximale", textureMaxSize,
                 new[] { "512", "1024", "2048", "4096" }, new[] { 512, 1024, 2048, 4096 });
             compressionQuality = EditorGUILayout.IntSlider("Qualité compression", compressionQuality, 0, 100);
@@ -77,10 +73,11 @@ namespace Zyumie.AvatarSuite
             if (GUILayout.Button("Créer une copie + optimiser les textures", GUILayout.Height(36)))
             {
                 var copy = AvatarOperations.CreatePlatformCopy(avatar, "_TextureOptimized");
+                if (!copy) { report = "Impossible de créer la copie."; return; }
                 Selection.activeGameObject = copy;
                 avatar = copy;
                 try { report = AvatarTextureOptimizer.OptimizeOnAvatarCopy(copy, textureMaxSize, compressionQuality).message; }
-                catch (System.Exception ex) { report = "Erreur optimisation :\n" + ex; Debug.LogException(ex); }
+                catch (Exception ex) { report = "Erreur optimisation :\n" + ex; Debug.LogException(ex); }
             }
 
             EditorGUILayout.Space(8);
@@ -96,132 +93,35 @@ namespace Zyumie.AvatarSuite
 
         private void DrawTracking()
         {
-            EditorGUILayout.HelpBox("FEO vérifie Eye Look, ajoute UserEyeTracking au FX Animator et configure les contrôles natifs VRChat. MainGestures agit sur les doigts ; les expressions faciales du FX Animator restent indépendantes.", MessageType.Info);
+            EditorGUILayout.HelpBox("FEO v0.4.0 requiert VRChat Avatars SDK 3.10.6+ pour configurer le Face Tracking natif Unified Expressions.", MessageType.Info);
             if (GUILayout.Button("Configurer automatiquement Function > FEO", GUILayout.Height(38)))
                 report = FEOAutoIntegration.Configure(avatar);
+            if (GUILayout.Button("Diagnostiquer Eye Look / Face Tracking / OSC", GUILayout.Height(34)))
+                report = AvatarOperations.InspectTracking(avatar);
             if (GUILayout.Button("Ouvrir le simulateur des yeux à la souris", GUILayout.Height(34)))
                 FEOMouseEyeSimulator.Open(avatar);
-            if (GUILayout.Button("Diagnostiquer Eye Look / OSC / Animator", GUILayout.Height(32)))
-                report = AvatarOperations.InspectTracking(avatar);
-            if (GUILayout.Button("Désactiver les booléens Face Tracking du Descriptor"))
-            {
-                if (EditorUtility.DisplayDialog("Désactiver Face Tracking ?", "Modifie uniquement les champs booléens FaceTracking reconnus sur le Descriptor.", "Désactiver", "Annuler"))
-                    report = AvatarOperations.DisableFaceTrackingFields(avatar);
-            }
+            EditorGUILayout.HelpBox("MainGestures ne touche plus au contrôleur Gesture ni aux doigts. Il masque uniquement les couches FX détectées comme liées aux gestes et aux BlendShapes faciales.", MessageType.None);
+            EditorGUILayout.HelpBox("Pour FrameEyeOSC, la réception native attend /tracking/face/v1 avec un blob de 102 octets. Les messages /tracking/eye/* sont un autre flux.", MessageType.Warning);
         }
 
         private void DrawPlatforms()
         {
-            EditorGUILayout.HelpBox("Nécessite VRChat SDK - Avatars 3.8.1+. Le bouton garde cet avatar comme base PC, crée une variante Android et l’enregistre avec l’API officielle PerPlatformOverrides.", MessageType.Info);
+            EditorGUILayout.HelpBox("Crée une variante Android et l'enregistre sur l'avatar PC avec l'API officielle PerPlatformOverrides. La copie n'est pas optimisée automatiquement pour Quest.", MessageType.Info);
+            if (GUILayout.Button("Créer / mettre à jour le pack CROSS-PLATFORM", GUILayout.Height(40)))
+                report = AvatarPlatformBuilder.CreateOrUpdateAndroidOverride(avatar);
+            EditorGUILayout.Space(6);
+            if (GUILayout.Button("Créer une copie Android seule")) MakeCopy("_Android_Quest");
             if (GUILayout.Button("Créer une copie Windows / PCVR")) MakeCopy("_Windows_PCVR");
-            if (GUILayout.Button("Créer une copie Android / Quest / Steam Frame")) MakeCopy("_Android_Quest_SteamFrame");
-            if (GUILayout.Button("Créer le pack CROSS-PLATFORM (Windows + Android)", GUILayout.Height(38))) MakeCrossPlatform();
-            EditorGUILayout.HelpBox("Le bouton CROSS-PLATFORM ne publie rien : vérifie les deux variantes puis utilise Multi-Platform Build & Publish dans le SDK.", MessageType.Warning);
+            EditorGUILayout.HelpBox("Après vérification de la variante Android, publie depuis l'avatar principal avec VRChat SDK > Builder > Multi-Platform Build & Publish. Un Build & Publish PC seul ne met pas à jour Quest.", MessageType.Warning);
         }
 
         private void MakeCopy(string suffix)
         {
             var copy = AvatarOperations.CreatePlatformCopy(avatar, suffix);
+            if (!copy) { report = "Impossible de créer la copie."; return; }
             Selection.activeGameObject = copy;
             avatar = copy;
-            report = "Copie créée : " + copy.name + "\nAucun composant n'a été supprimé automatiquement. Lance VRChat SDK Builder > Build & Test.";
-        }
-
-        private void MakeCrossPlatform()
-        {
-            GameObject baseAvatar = avatar;
-            if (!baseAvatar) return;
-
-            try
-            {
-                VRCAvatarDescriptor baseDescriptor = FindAvatarDescriptor(baseAvatar);
-                if (!baseDescriptor)
-                {
-                    report = "Aucun VRCAvatarDescriptor trouvé sur l'avatar sélectionné. Sélectionne sa racine.";
-                    return;
-                }
-
-                const string suffix = "_Android_Quest_SteamFrame";
-                string androidName = baseAvatar.name + suffix;
-                GameObject androidAvatar = FindSiblingOrRoot(baseAvatar, androidName);
-                bool created = androidAvatar == null;
-
-                if (created)
-                    androidAvatar = AvatarOperations.CreatePlatformCopy(baseAvatar, suffix);
-
-                VRCAvatarDescriptor androidDescriptor = FindAvatarDescriptor(androidAvatar);
-                if (!androidDescriptor)
-                {
-                    if (created) Undo.DestroyObjectImmediate(androidAvatar);
-                    report = "La copie Android ne contient pas de VRCAvatarDescriptor. Override non configuré.";
-                    return;
-                }
-
-                SetAndroidOverride(baseAvatar, androidAvatar, androidDescriptor);
-                avatar = baseAvatar;
-                Selection.activeGameObject = baseAvatar;
-
-                report = "CONFIGURATION CROSS-PLATFORM TERMINÉE\n\n" +
-                    "Avatar principal (PC / Windows) : " + baseAvatar.name + "\n" +
-                    "Variante Android : " + androidAvatar.name + "\n\n" +
-                    "La variante Android est associée à l'avatar principal via l'API officielle Per-Platform Overrides du SDK VRChat.\n" +
-                    "Les deux variantes sont destinées à être publiées sous le même Avatar ID avec Multi-Platform Build & Publish.\n\n" +
-                    (created ? "Copie Android créée." : "Copie Android existante réutilisée.") +
-                    "\nAucun Blueprint ID n'a été modifié. Vérifie les deux versions dans le SDK avant publication.";
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-                report = "Échec de la configuration CROSS-PLATFORM :\n" + ex.GetBaseException().Message +
-                    "\nVérifie que VRChat SDK - Avatars 3.8.1 ou plus récent est installé. Aucune publication n'a été lancée.";
-            }
-        }
-
-        private static VRCAvatarDescriptor FindAvatarDescriptor(GameObject root)
-        {
-            if (!root) return null;
-            return root.GetComponents<VRCAvatarDescriptor>().FirstOrDefault();
-        }
-
-        private static GameObject FindSiblingOrRoot(GameObject source, string objectName)
-        {
-            if (source.transform.parent)
-            {
-                Transform found = source.transform.parent.Find(objectName);
-                return found ? found.gameObject : null;
-            }
-
-            return UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects()
-                .FirstOrDefault(go => go != source && go.name == objectName);
-        }
-
-        private static void SetAndroidOverride(GameObject baseAvatar, GameObject androidAvatar, VRCAvatarDescriptor androidDescriptor)
-        {
-            // Official VRChat SDK API (Avatars SDK 3.8.1+).
-            var current = PerPlatformOverrides.GetPlatformOverrides(baseAvatar);
-            var updated = current != null
-                ? new List<PerPlatformOverrides.Option>(current)
-                : new List<PerPlatformOverrides.Option>();
-
-            updated.RemoveAll(option => option.platform == BuildTarget.Android);
-            updated.Add(new PerPlatformOverrides.Option
-            {
-                platform = BuildTarget.Android,
-                avatar = androidDescriptor
-            });
-
-            Undo.RegisterCompleteObjectUndo(baseAvatar, "Zyumie Configure Android Platform Override");
-            PerPlatformOverrides.SetPlatformOverrides(baseAvatar, updated);
-
-            var verified = PerPlatformOverrides.GetPlatformOverrides(baseAvatar);
-            bool found = verified != null && verified.Any(option =>
-                option.platform == BuildTarget.Android && option.avatar == androidDescriptor);
-            if (!found)
-                throw new InvalidOperationException("Le SDK n'a pas confirmé l'enregistrement de la variante Android.");
-
-            EditorUtility.SetDirty(baseAvatar);
-            EditorUtility.SetDirty(androidAvatar);
-            EditorUtility.SetDirty(androidDescriptor);
+            report = "Copie créée : " + copy.name + "\nAucun composant ni shader n'a été converti automatiquement. Vérifie le Builder de la plateforme cible.";
         }
 
         private void ExportReport()

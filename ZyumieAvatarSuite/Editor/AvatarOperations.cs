@@ -1,8 +1,10 @@
+using System;
 using System.Linq;
 using System.Text;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
-using VRC.SDK3.Avatars.ScriptableObjects;
+using VRC.SDK3.Avatars.Components;
 
 namespace Zyumie.AvatarSuite
 {
@@ -23,10 +25,10 @@ namespace Zyumie.AvatarSuite
         public static GameObject CreatePlatformCopy(GameObject source, string suffix)
         {
             if (!source) return null;
-            var copy = Object.Instantiate(source, source.transform.parent);
+            var copy = UnityEngine.Object.Instantiate(source, source.transform.parent);
             Undo.RegisterCreatedObjectUndo(copy, "Zyumie Create Platform Copy");
             copy.name = source.name + suffix;
-            // Do not strip colliders/rigidbodies: they can be used by PhysBones, Contacts and custom interactions.
+            // Do not remove physics, contacts or PhysBones here. Quest compatibility is audited separately.
             EditorUtility.SetDirty(copy);
             return copy;
         }
@@ -34,164 +36,154 @@ namespace Zyumie.AvatarSuite
         public static string InspectTracking(GameObject root)
         {
             var b = new StringBuilder();
-            b.AppendLine("ZYUMIE AVATAR SUITE — FEO TRACKING DIAGNOSTIC v0.3.9");
+            b.AppendLine("ZYUMIE AVATAR SUITE — TRACKING DIAGNOSTIC v0.4.0");
             if (!root) return "Sélectionne la racine de l'avatar.";
-            var descriptors = root.GetComponentsInChildren<Component>(true)
-                .Where(c => c && c.GetType().Name == "VRCAvatarDescriptor").ToArray();
+
+            var descriptors = root.GetComponentsInChildren<VRCAvatarDescriptor>(true);
             b.AppendLine("VRC Avatar Descriptor(s) : " + descriptors.Length);
+            if (descriptors.Length == 0) return b.Append("Aucun Descriptor trouvé.").ToString();
 
             foreach (var descriptor in descriptors)
             {
                 var so = new SerializedObject(descriptor);
                 so.Update();
-                b.AppendLine("\\nDescriptor : " + descriptor.name);
-                var enabled = so.FindProperty("enableEyeLook");
-                b.AppendLine("  Eye Look activé : " + (enabled != null ? enabled.boolValue.ToString() : "propriété introuvable"));
+                b.AppendLine("\nDescriptor : " + descriptor.name);
+                var eyeEnabled = so.FindProperty("enableEyeLook");
+                b.AppendLine("  Eye Look activé : " + (eyeEnabled != null ? eyeEnabled.boolValue.ToString() : "propriété introuvable"));
                 var left = so.FindProperty("customEyeLookSettings.leftEye")?.objectReferenceValue as Transform;
                 var right = so.FindProperty("customEyeLookSettings.rightEye")?.objectReferenceValue as Transform;
                 b.AppendLine("  Left Eye : " + (left ? PathOf(left) : "NON ASSIGNÉ"));
                 b.AppendLine("  Right Eye : " + (right ? PathOf(right) : "NON ASSIGNÉ"));
                 b.AppendLine("  Références distinctes : " + (left && right && left != right));
-                b.AppendLine("  Même hiérarchie que l'avatar : " +
-                    (left && right && left.IsChildOf(root.transform) && right.IsChildOf(root.transform)));
-                var descriptorProperty = so.GetIterator();
-                bool enterDescriptor = true;
-                while (descriptorProperty.NextVisible(enterDescriptor))
+                var gazeMode = so.FindProperty("customEyeLookSettings.eyeGazeMode");
+                var eyelidType = so.FindProperty("customEyeLookSettings.eyelidType");
+                b.AppendLine("  Eye Gaze Mode : " + ReadEnum(gazeMode));
+                b.AppendLine("  Eyelids Type : " + ReadEnum(eyelidType));
+
+                var faceEnabled = so.FindProperty("enableFaceTracking");
+                var useAll = so.FindProperty("useAllTrackingKeys");
+                var meshes = so.FindProperty("faceTrackingMeshes");
+                var sets = so.FindProperty("faceTrackingBlendshapesSetList");
+                if (faceEnabled == null || useAll == null || meshes == null || sets == null)
                 {
-                    enterDescriptor = true;
-                    string propertyName = descriptorProperty.propertyPath.ToLowerInvariant();
-                    if (propertyName.Contains("eyelid") || propertyName.Contains("eye") || propertyName.Contains("tracking"))
-                        b.AppendLine("  Descriptor." + descriptorProperty.propertyPath + " = " + Describe(descriptorProperty));
+                    b.AppendLine("  Face Tracking natif : champs absents (Avatars SDK 3.10.6+ requis pour la configuration native complète).");
+                }
+                else
+                {
+                    b.AppendLine("  Face Tracking activé : " + faceEnabled.boolValue);
+                    b.AppendLine("  Use All Tracking Keys : " + useAll.boolValue);
+                    b.AppendLine("  Face Tracking Meshes : " + meshes.arraySize + "/16");
+                    b.AppendLine("  Blendshapes Sets : " + sets.arraySize);
+                    int mapped = 0;
+                    int mappedEye = 0;
+                    bool blinkLeft = false, blinkRight = false;
+                    for (int i = 0; i < sets.arraySize; i++)
+                    {
+                        var set = sets.GetArrayElementAtIndex(i);
+                        var name = set.FindPropertyRelative("setName");
+                        var shapes = set.FindPropertyRelative("faceTrackingBlendshapeNames");
+                        b.AppendLine("    Set " + i + " : " + (name != null ? name.stringValue : "(sans nom)"));
+                        if (shapes == null || !shapes.isArray) continue;
+                        for (int key = 0; key < shapes.arraySize; key++)
+                        {
+                            string value = shapes.GetArrayElementAtIndex(key).stringValue;
+                            if (string.IsNullOrEmpty(value)) continue;
+                            mapped++;
+                            if (key <= 7) mappedEye++;
+                            if (key == 8) blinkRight = true;
+                            if (key == 9) blinkLeft = true;
+                        }
+                    }
+                    b.AppendLine("  Mappings Face Tracking : " + mapped + " (dont EyeLook* : " + mappedEye + ")");
+                    b.AppendLine("  Clignement mappé : gauche=" + blinkLeft + ", droite=" + blinkRight);
+                    b.AppendLine("  OSC Unified Expressions : " + (faceEnabled.boolValue && useAll.boolValue
+                        ? "configuration avatar annoncée comme compatible avec /tracking/face/v1"
+                        : "non activé : /tracking/face/v1 ne pilotera pas les mappings complets"));
                 }
 
-                var expressionParameters = so.FindProperty("expressionParameters")?.objectReferenceValue as VRCExpressionParameters;
-                if (expressionParameters)
+                var parameters = so.FindProperty("expressionParameters")?.objectReferenceValue as VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters;
+                if (parameters)
                 {
-                    int syncedBits = (expressionParameters.parameters ?? System.Array.Empty<VRCExpressionParameters.Parameter>())
-                        .Where(parameter => parameter.networkSynced)
-                        .Sum(parameter => parameter.valueType == VRCExpressionParameters.ValueType.Bool ? 1 : 8);
-                    b.AppendLine("  Expression Parameters synchronisés : " + syncedBits + "/256 bits");
-                    b.AppendLine("  Budget synchronisé : " + (syncedBits <= 256 ? "OK" : "DÉPASSÉ"));
+                    int bits = (parameters.parameters ?? Array.Empty<VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter>())
+                        .Where(p => p.networkSynced)
+                        .Sum(p => p.valueType == VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.ValueType.Bool ? 1 : 8);
+                    b.AppendLine("  Expression Parameters synchronisés : " + bits + "/256 bits");
                 }
                 else b.AppendLine("  Expression Parameters : asset non assigné.");
 
-                var layers = so.FindProperty("baseAnimationLayers");
-                bool fxFound = false;
-                if (layers != null && layers.isArray)
-                {
-                    for (int i = 0; i < layers.arraySize; i++)
-                    {
-                        var element = layers.GetArrayElementAtIndex(i);
-                        var type = element.FindPropertyRelative("type");
-                        if (type == null || type.enumValueIndex < 0 || type.enumValueIndex >= type.enumNames.Length ||
-                            !type.enumNames[type.enumValueIndex].Equals("FX", System.StringComparison.OrdinalIgnoreCase)) continue;
-                        fxFound = true;
-                        var controller = element.FindPropertyRelative("animatorController")?.objectReferenceValue as RuntimeAnimatorController;
-                        b.AppendLine("  FX Controller : " + (controller ? controller.name : "NON ASSIGNÉ"));
-                        var animatorController = controller as UnityEditor.Animations.AnimatorController;
-                        if (animatorController)
-                        {
-                            var parameters = animatorController.parameters;
-                            var names = parameters.Select(x => x.name).ToArray();
-                            b.AppendLine("  Paramètre UserEyeTracking présent : " + names.Contains("UserEyeTracking"));
-                            b.AppendLine("  Paramètre EyesTracking présent : " + names.Contains("EyesTracking"));
-                            foreach (var parameter in parameters.Where(x => x.name == "UserEyeTracking" || x.name == "EyesTracking"))
-                                b.AppendLine("    " + parameter.name + " : " + parameter.type + " (défaut " +
-                                    (parameter.type == AnimatorControllerParameterType.Bool ? parameter.defaultBool.ToString() : parameter.defaultFloat.ToString("0.###")) + ")");
-                        }
-                        else b.AppendLine("  Paramètres FX : non inspectables automatiquement (controller absent ou override).");
-                    }
-                }
-                if (!fxFound) b.AppendLine("  Slot FX : introuvable.");
+                InspectPlayableLayer(so, VRCAvatarDescriptor.AnimLayerType.FX, b);
+                InspectPlayableLayer(so, VRCAvatarDescriptor.AnimLayerType.Gesture, b);
             }
 
-            int eye = 0, lids = 0, mouth = 0;
-            var lidNames = new System.Collections.Generic.List<string>();
+            b.AppendLine("\nBlendShapes candidats présents dans les meshes :");
+            int shown = 0;
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 if (!smr || !smr.sharedMesh) continue;
                 for (int i = 0; i < smr.sharedMesh.blendShapeCount; i++)
                 {
-                    string originalName = smr.sharedMesh.GetBlendShapeName(i);
-                    string n = originalName.ToLowerInvariant();
-                    if (n.Contains("eye") || n.Contains("iris") || n.Contains("look")) eye++;
-                    if (n.Contains("lid") || n.Contains("blink") || n.Contains("close") ||
-                        n.Contains("まばたき") || n.Contains("瞬き") || n.Contains("目閉じ") || n.Contains("閉じ"))
-                    {
-                        lids++;
-                        lidNames.Add(smr.name + " / " + originalName + " [index " + i + "]");
-                    }
-                    if (n.Contains("mouth") || n.Contains("jaw") || n.Contains("viseme")) mouth++;
+                    string name = smr.sharedMesh.GetBlendShapeName(i);
+                    string normalized = Normalize(name);
+                    bool candidate = normalized.Contains("eye") || normalized.Contains("blink") || normalized.Contains("mouth") ||
+                                     normalized.Contains("jaw") || normalized.Contains("brow") || normalized.Contains("lip") ||
+                                     normalized.Contains("viseme") || normalized.Contains("まばたき") || normalized.Contains("瞬き");
+                    if (!candidate) continue;
+                    b.AppendLine("  - " + smr.name + " / " + name + " [" + i + "]");
+                    if (++shown >= 80) break;
                 }
+                if (shown >= 80) break;
             }
-            b.AppendLine("\\nBlendShapes regard détectées (noms indicatifs) : " + eye);
-            b.AppendLine("BlendShapes paupières candidates : " + lids);
-            b.AppendLine("Les candidats sont listés avec leur index exact ; vérifie-les un par un dans le simulateur avant de les utiliser comme mapping de clignement.");
-            foreach (var name in lidNames.Take(30)) b.AppendLine("  - " + name);
-            b.AppendLine("BlendShapes bouche/visèmes : " + mouth);
-            b.AppendLine("\\nOSC natif Eye Tracking attendu : /tracking/eye/EyesClosedAmount + UNE adresse de regard (ex. /tracking/eye/CenterVec).");
-            b.AppendLine("UserEyeTracking est un Bool intégré à ajouter au FX Animator pour piloter des états ; ne pas l'ajouter aux Expression Parameters.");
-            b.AppendLine("La réception OSC et le mouvement réel doivent être confirmés dans VRChat. Ce diagnostic ne peut pas lire le flux OSC depuis Unity.");
-            b.AppendLine("Aucun os, BlendShape, menu ou contrôleur n'a été modifié par ce diagnostic.");
+            if (shown == 0) b.AppendLine("  Aucun candidat basé sur le nom. Le mapping devra être configuré manuellement.");
+
+            b.AppendLine("\nOSC : /tracking/face/v1 attend un unique blob de 102 octets Unified Expressions.");
+            b.AppendLine("Les anciennes adresses /tracking/eye/* ne confirment pas la réception du flux /tracking/face/v1.");
+            b.AppendLine("Statuts utiles : /avatar/avatarfullfacetracking, /avatar/parameters/UserEyeTracking, /avatar/parameters/UserFaceTracking.");
+            b.AppendLine("Ce diagnostic ne lit pas le trafic OSC et ne garantit pas le résultat visuel en jeu.");
+            b.AppendLine("Aucune donnée du Descriptor, aucun os et aucun BlendShape n'a été modifié.");
             return b.ToString();
         }
 
-        public static string DisableFaceTrackingFields(GameObject root)
+        private static void InspectPlayableLayer(SerializedObject descriptor, VRCAvatarDescriptor.AnimLayerType target, StringBuilder b)
         {
-            var b = new StringBuilder();
-            int changed = 0;
-            var descriptors = root.GetComponentsInChildren<Component>(true)
-                .Where(c => c && c.GetType().Name == "VRCAvatarDescriptor").ToArray();
-            foreach (var descriptor in descriptors)
+            var layers = descriptor.FindProperty("baseAnimationLayers");
+            if (layers == null || !layers.isArray) return;
+            for (int i = 0; i < layers.arraySize; i++)
             {
-                Undo.RegisterCompleteObjectUndo(descriptor, "Zyumie Disable Face Tracking Fields");
-                var so = new SerializedObject(descriptor);
-                so.Update();
-                var p = so.GetIterator();
-                bool enter = true;
-                while (p.NextVisible(enter))
+                var element = layers.GetArrayElementAtIndex(i);
+                var type = element.FindPropertyRelative("type");
+                if (type == null || type.enumValueIndex < 0 || type.enumValueIndex >= type.enumNames.Length ||
+                    !string.Equals(type.enumNames[type.enumValueIndex], target.ToString(), StringComparison.OrdinalIgnoreCase)) continue;
+                var controller = element.FindPropertyRelative("animatorController")?.objectReferenceValue as RuntimeAnimatorController;
+                b.AppendLine("  " + target + " Controller : " + (controller ? controller.name : "NON ASSIGNÉ"));
+                var animator = controller as AnimatorController;
+                if (animator)
                 {
-                    enter = true;
-                    if (p.propertyType == SerializedPropertyType.Boolean &&
-                        p.propertyPath.ToLowerInvariant().Contains("facetracking") && p.boolValue)
+                    foreach (var layer in animator.layers)
                     {
-                        p.boolValue = false;
-                        changed++;
-                        b.AppendLine("Désactivé : " + p.propertyPath);
+                        if (layer.name.StartsWith("Zyumie_FEO_", StringComparison.Ordinal))
+                            b.AppendLine("    Couche FEO : " + layer.name);
+                    }
+                    if (target == VRCAvatarDescriptor.AnimLayerType.FX)
+                    {
+                        var names = animator.parameters.Select(p => p.name).ToArray();
+                        b.AppendLine("    Paramètre EyesTracking : " + names.Contains("EyesTracking"));
+                        b.AppendLine("    Paramètre MainGestures : " + names.Contains("MainGestures"));
                     }
                 }
-                so.ApplyModifiedProperties();
-                EditorUtility.SetDirty(descriptor);
-            }
-            if (descriptors.Length == 0) return "Aucun VRC Avatar Descriptor trouvé.";
-            if (changed == 0) b.AppendLine("Aucun booléen FaceTracking actif n'a été trouvé.");
-            b.AppendLine("Les menus, Animator Controllers, visèmes et BlendShapes ne sont pas supprimés.");
-            return b.ToString();
-        }
-
-        private static string Describe(SerializedProperty p)
-        {
-            switch (p.propertyType)
-            {
-                case SerializedPropertyType.Boolean: return p.boolValue.ToString();
-                case SerializedPropertyType.Integer: return p.intValue.ToString();
-                case SerializedPropertyType.Float: return p.floatValue.ToString("0.###");
-                case SerializedPropertyType.ObjectReference: return p.objectReferenceValue ? p.objectReferenceValue.name : "None";
-                case SerializedPropertyType.Enum:
-                    return p.enumDisplayNames != null && p.enumValueIndex >= 0 && p.enumValueIndex < p.enumDisplayNames.Length
-                        ? p.enumDisplayNames[p.enumValueIndex] : p.enumValueIndex.ToString();
-                case SerializedPropertyType.String: return p.stringValue;
-                default: return p.propertyType.ToString();
+                return;
             }
         }
 
-        private static bool IsLikelyEye(string name, bool left)
+        private static string ReadEnum(SerializedProperty property)
         {
-            string n = name.ToLowerInvariant();
-            string side = left ? "left" : "right";
-            string suffixA = left ? ".l" : ".r";
-            string suffixB = left ? "_l" : "_r";
-            return n.Contains("eye") && (n.Contains(side) || n.EndsWith(suffixA) || n.EndsWith(suffixB));
+            if (property == null || property.propertyType != SerializedPropertyType.Enum) return "non disponible";
+            return property.enumValueIndex >= 0 && property.enumValueIndex < property.enumDisplayNames.Length
+                ? property.enumDisplayNames[property.enumValueIndex] : property.enumValueIndex.ToString();
+        }
+
+        private static string Normalize(string value)
+        {
+            return new string((value ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
         }
 
         private static string PathOf(Transform t)
