@@ -1,92 +1,177 @@
-# Zyumie Avatar Suite v0.4.1 (FIX2)
+# Zyumie Avatar Suite v0.7.1
 
-Unity Editor tools for VRChat avatar diagnostics, native Unified Expressions face tracking setup, gesture-driven facial expression toggling, texture optimization and PC/Android avatar overrides.
+**Unity Editor toolkit for VRChat avatar tracking setup, PC/Android variants, performance diagnostics and non-destructive optimization.**
+
+> Version 0.7.1 is a development/test release. The source has not been compiled in a Unity project or validated in a live VRChat session as part of this archive. Back up your project and avatar before using generated tools.
 
 ## Requirements
 
-- Unity **2022.3 LTS**. Do not upgrade this project to Unity 6 for this package.
-- VRChat SDK - Avatars **3.10.6 or newer** for native Face Tracking support.
+- Unity **2022.3 LTS** (keep the Unity version required by the VRChat Avatars SDK).
+- VRChat Avatars SDK **3.10.6 or newer** for native Unified Expressions Face Tracking.
 - AV3 Demo Assets samples if the avatar has no custom FX or Gesture controller assigned.
 
-## Installation / update
+## Installation
 
-This archive is a **patch overlay**, not a full replacement of every file in the repository. It contains the modified scripts plus the newly added platform builder.
+### As a local Unity package
 
-1. Back up the Unity project and the avatar prefab/scene.
-2. In the project, open the existing `ZyumieAvatarSuite-0.3.9` package folder.
-3. Replace `Editor/FEOAutoIntegration.cs`, `Editor/AvatarOperations.cs` and `Editor/ZyumieAvatarSuiteWindow.cs` with the files from this patch.
-4. Add the new `Editor/AvatarPlatformBuilder.cs` file.
-5. Replace the package's `package.json` and `README.md` with the versions in this patch. Keep the existing `AvatarMetrics.cs`, `AvatarTextureOptimizer.cs` and `FEOMouseEyeSimulator.cs` files.
-6. Wait for Unity to compile, then open **Zyumie → Avatar Suite**.
+1. Extract the complete `ZyumieAvatarSuite` folder from this archive.
+2. In Unity, open **Window → Package Management → Package Manager**.
+3. Press **+ → Add package from disk…** and select `ZyumieAvatarSuite/package.json`.
+4. Wait for Unity to compile, then open **Zyumie → Avatar Suite**.
 
-## Tracking / FEO
+### Update an existing local copy
 
-1. Select the avatar root containing the VRC Avatar Descriptor.
-2. Open **Zyumie → Avatar Suite → Tracking**.
-3. Run **Configurer automatiquement Function > FEO**.
-4. The tool checks the current SDK's native Face Tracking serialized fields, maps recognised Unified Expressions BlendShapes and preserves existing non-empty mappings.
-5. If no compatible BlendShape is found, the tool no longer aborts the entire FEO setup. It leaves native Face Tracking disabled, configures Eye Look in **Bone Rotation** mode with the avatar's Left Eye / Right Eye bones, and prints the available BlendShape names in the report for manual mapping. This fallback can still use legacy `/tracking/eye/*` OSC input; it does not animate facial expressions through `/tracking/face/v1`.
-6. When compatible mappings are found, Eye Gaze Mode becomes **Both** when EyeLook mappings exist, and Eyelids Type becomes **Face Tracking** only when both left and right blink mappings are found.
-7. `EyesTracking` controls VRChat's `VRCAnimatorTrackingControl` eye tracking behavior. OFF returns control to avatar animations; ON allows VRChat tracking.
+1. Back up the project, avatar prefab/scene, and any generated Animator assets.
+2. Replace the package folder with the complete `ZyumieAvatarSuite` folder from this archive.
+3. Re-open Unity and resolve any compile errors before running an operation.
 
-### OSC / FrameEyeOSC
+## v0.7.1 changes
 
-Native Unified Expressions face tracking uses:
+### Polygon reduction scope and false-protection fix
 
-- Address: `/tracking/face/v1`
-- One OSC blob argument (`b`)
-- Exactly **102 bytes** in the official Unified Expressions key order
-- VRChat OSC must be enabled, and the avatar must have Face Tracking + Use All Tracking Keys enabled
+- Fixes an over-broad protection rule: the decimator no longer checks the imported `Mesh.name` for words such as `Skin`. Many unrelated FBX clothing meshes share a generic source-mesh name; using that name protected most of the avatar and left only one renderer eligible. Protection now uses the actual Renderer name and its parent names.
+- The operation now processes both `SkinnedMeshRenderer` and static `MeshRenderer` + `MeshFilter` geometry, so its before/after triangle total covers both categories.
+- Adds more reduction profiles (quality, balanced, optimized, performance, aggressive and very aggressive). More aggressive profiles relax UV/normal grouping and average skin weights while preserving dominant-bone grouping. This can cause visible texture/normal/skinning loss; review the copy carefully.
+- BlendShape vertex protection ignores extremely small numerical noise and locks vertices only when position/normal/tangent deltas exceed a small significance threshold. This allows meshes with minor FBX delta noise to remain optimizable while meaningful expression deformation remains protected.
+- Updates the geometry audit and UI version to 0.7.1.
 
-The legacy `/tracking/eye/*` addresses are not the same as `/tracking/face/v1`. Seeing `/tracking/eye/CenterVec` or `/tracking/eye/EyesClosedAmount` in OSC Debug does not prove that FrameEyeOSC is sending the native 102-byte face tracking blob. The avatar must also have matching Blendshapes Set mappings for the values it should display.
+**Important:** this fixes the false-positive protection shown by reports where clothing renderers were classified as `skin` because their imported Mesh asset had a generic name. It does not guarantee a sub-200,000 triangle avatar. Face/head/body/hair protection, UV islands, material boundaries and actual mesh topology still limit reduction. The most aggressive profiles are lossy; inspect face, hair, garments, UV textures and joints in Unity before upload. Unity compilation and avatar-specific visual validation are still required.
 
-Useful read-only status outputs:
+## v0.7.0 changes
 
-- `/avatar/avatarfullfacetracking` — whether the current avatar advertises full native face tracking support
-- `/avatar/parameters/UserEyeTracking` — whether eye tracking is available to the local user
-- `/avatar/parameters/UserFaceTracking` — whether a face tracking source is active and allowed
+### Quality-first polygon reduction
 
-`UserEyeTracking` and `UserFaceTracking` are built-in VRChat Animator parameters. FEO does not add them to Expression Parameters and does not claim that adding their names alone enables tracking.
+- Vertices moved by BlendShapes, significantly weighted to face/head/hair bones, or used by face/skin/hair material submeshes are individually protected from clustering. Renderers/meshes named for face/head/skin/body/eyes/mouth/hair/lashes/brows remain fully protected. The heuristic also checks sensitive parent names, so generic FBX renderer names are less likely to bypass protection. Review its skip report because automatic name-based recognition is not infallible.
+- Non-protected meshes use finer UV buckets and quantized normal groups. Significant secondary bone influences remain part of the grouping key; the optimizer no longer relaxes down to only the dominant bone.
+- Small meshes/accessories are skipped rather than aggressively collapsed. The target remains a per-mesh goal, not a guarantee for the complete avatar; the report lists every protected or skipped renderer.
+- This remains a lossy spatial-clustering simplifier, not a QEM/edge-collapse decimator. Review garments, thin geometry, UV seams and joints after processing. A lower reduction with clean visuals is preferred over a high reduction that damages the avatar.
 
-### MainGestures toggle
+### Skinned Mesh, bone-weight and hierarchy optimization
 
-The old v0.3.9 implementation created a Gesture playable layer with a neutral finger-pose animation. That could freeze the hands/fingers. Version 0.4.1 removes that legacy layer from the duplicated Gesture controller and does not add any finger pose override.
+- Adds a safe skinning pass that can keep a configurable maximum of 2, 4 or 8 influences per vertex (4 by default), drops tiny weights below the selected threshold, then normalizes the remaining weights in descending order.
+- Removes unused entries from each `SkinnedMeshRenderer.bones` array and the matching `Mesh.bindposes` array. The remapped mesh is saved as a new asset.
+- The optimizer never deletes, reparents or renames rig GameObjects/Transforms. This is deliberate: hierarchy transforms may still be referenced by Animator clips, constraints, contacts, PhysBones or custom scripts. The operation reduces renderer bone slots/weights, not the total rig hierarchy count.
+- Retains the conservative SkinnedMeshRenderer merger. It still rejects BlendShape meshes and renderers whose paths/transforms are animated.
 
-`MainGestures` is added only when the FX controller contains a non-base layer that both:
+### Material Slots
 
-- has transition conditions using `GestureLeft`, `GestureRight`, `GestureLeftWeight` or `GestureRightWeight`; and
-- contains animation curves for SkinnedMeshRenderer BlendShapes.
+- Adds consolidation of duplicate submeshes that use the exact same Material asset on one renderer. It combines their triangle indices into one submesh and reduces the renderer's matching material slots.
+- Different Material assets are not merged even when their shader/properties appear similar. Renderers with MaterialPropertyBlocks, mismatched slot/submesh counts, unreadable meshes or non-triangle topology are skipped.
 
-The new toggle uses `VRCAnimatorLayerControl` to set those detected FX layer weights to 0 or 1. It does not modify the Gesture playable layer, so normal hand/finger tracking remains enabled.
+### PhysBones and Colliders
 
-Limit: the tool mutes the entire detected FX layer. If one layer combines gesture facial expressions with other facial animations, those other animations are also muted while MainGestures is OFF. Review the generated report and test both states in VRChat Build & Test. If no suitable layer is detected, the button is intentionally omitted rather than presenting a non-functional toggle.
+- Adds cleanup of null/duplicate explicit PhysBone collider references.
+- Removes redundant child entries from `Ignore Transforms` when an ancestor is already ignored; ignored transforms already cover their descendants. It measures affected transforms but does not delete/reparent chain bones or silently change their motion.
+- Reports estimated affected-transform counts, explicit collider references and collision checks.
+- Can optionally remove a `VRCPhysBoneCollider` only when it is not referenced in any explicit PhysBone collider list and its serialized global-collision flag is readable and false. This optional step runs only when every PhysBone collider list was discovered; if the SDK serialized fields cannot be identified reliably, deletion is disabled. It warns that custom scripts may still reference components by name.
+- Never deletes or reparents PhysBone chain transforms. Large chains are reported for manual review/splitting instead of being silently altered.
 
-## Cross-platform PC + Android / Quest
+### Performance diagnostics
 
-1. Select the PC avatar as the base avatar.
-2. Open **Zyumie → Avatar Suite → Plateformes**.
-3. Click **Créer / mettre à jour le pack CROSS-PLATFORM**.
-4. The tool creates or reuses a separate `_Android_Quest` avatar in the same scene and registers it as the Android `PerPlatformOverrides` variant on the PC base avatar.
-5. The tool audits shader names and reports mesh/triangle estimates. This is a warning-oriented audit, not a substitute for VRChat's Android Builder validation.
-6. Optimise the Android copy manually: replace shaders with Android-compatible shaders, reduce texture sizes/material cost and check PhysBones/contacts/performance in the SDK Builder.
-7. In **VRChat SDK → Builder**, select the PC/base avatar and use **Multi-Platform Build & Publish**.
+- Counts unique Transform references for the Bones estimate rather than simply summing each renderer's bone array.
+- Adds estimated PhysBone affected-transform and collision-check counts. These are diagnostics only; the VRChat SDK Builder remains authoritative.
+- Updates the PC and Android threshold reference to the current VRChat Performance Ranks documentation.
 
-Important: registering an override does not upload it. A regular PC **Build & Publish** does not publish the Android version. VRChat's Multi-Platform Build & Publish uploads the platform variants under the same Avatar ID. If Quest still reports Windows-only features, verify that the Android override is present and that the multi-platform upload completed successfully.
+## v0.6.1 changes
 
-The Android variant receives the same Expressions Menu and Expression Parameters asset references as the PC base so the parameter order and menu controls remain aligned. It keeps its own Animator controller slots; if you configured FEO on PC after an older Android copy was created, run FEO on that Android copy too. The tool does not automatically convert PC shaders, remove components, optimise meshes or publish avatars. It deliberately leaves avatar content intact rather than deleting components that may be used by PhysBones, Contacts or custom systems.
+### Polygon decimation fix
 
-## Safety / limitations
+- Replaces the previous near-exact attribute clustering key, which often prevented vertices from grouping and produced negligible reductions.
+- The v0.6.1 implementation used spatial vertex clustering with several UV/skinning preservation profiles. v0.7.0 replaces those profiles with finer UV and normal grouping and skips sensitive meshes by default.
+- Chooses the tested profile/grid combination that comes closest to the requested triangle target. Reports the actual per-renderer reduction and the selected profile.
+- Skips meshes when the estimated reduction is below 5% instead of claiming a successful optimization.
+- Disposes Unity NativeArrays used to read multi-influence skin weights.
+- This is still a lossy vertex-clustering decimator, not a feature-preserving QEM/edge-collapse decimator. Texture seams, silhouettes, fine accessories, skin deformation and BlendShape detail can be softened. Inspect the generated copy carefully.
 
-- Source FX/Gesture controllers, expression menus and parameter assets are duplicated before FEO assignment.
-- The previous FEO neutral-finger layer is removed only from the generated Gesture controller copy.
-- Face Tracking mappings are filled only where the first set has empty slots; existing non-empty mapping values are preserved.
-- No-match BlendShape detection is a supported fallback: FEO keeps Eye Look bone rotation configured and reports candidates instead of throwing an exception.
-- A maximum of 16 Face Tracking meshes is respected.
-- Cross-platform copies and overrides are created locally; no upload is initiated.
-- The tools have not been compiled inside Unity or tested on a live VRChat avatar as part of this source patch. Back up the project and use Build & Test before publishing.
+## v0.6.0 changes
 
-## License / copyright
+### FrameEyeOSC / native Face Tracking
 
-Copyright 2026 Zyumie. Licensed under the Apache License, Version 2.0. See the included `LICENSE` file from the repository root.
+- Keeps the avatar's Eye Look in **Bone Rotation** mode after FEO setup. FrameEyeOSC's native `/tracking/face/v1` `EyeLook*` values are designed to rotate the configured eye bones. **Both** additionally applies EyeLook BlendShapes and can over-rotate some avatars.
+- BlendShape matching now supports namespaced/prefixed names by matching normalized suffixes. Examples include `Body: EyeBlinkLeft` and `Face: EyeBlinkRight`.
+- Adds an explicit opt-in for `AFK_Mouse: Blink` (and equivalent normalized spellings) as a fallback for **both** `EyeClosedLeft` and `EyeClosedRight`. It is disabled by default and reported when used.
+- A shared blink BlendShape produces a symmetric blink only. It cannot represent independent left/right winks.
+- Reports `Body: vrc_Lookingup` / `Body: vrc_Lookingdown` candidates without assigning them automatically. The plugin does not stack these shapes with bone rotation.
+- Preserves existing non-empty Face Tracking mappings and keeps the 16-mesh limit.
+
+### FrameEyeOSC checklist and runtime boundary
+
+In FrameEyeOSC, use **VRChat** as the output mode and enable **Output → Send to Face Tracking too** to send `/tracking/face/v1`. Enable OSC in VRChat and use an avatar whose Descriptor has Face Tracking and **Use All Tracking Keys** enabled.
+
+The native message is one 102-byte OSC blob. FrameEyeOSC currently documents per-eye `EyeClosed`, `EyeWide`, `EyeLook`, and (when configured) `EyeSquint`, pupil and brow values. Other keys, including mouth keys, are sent as zero by this output mode. Unmapped keys do not affect BlendShapes, so mouth/gesture animations can remain driven by their existing Animator layers.
+
+The Unity diagnostic prints the expected FrameEyeOSC settings and the VRChat status outputs to inspect:
+
+- `/avatar/avatarfullfacetracking` — confirms that the currently loaded avatar advertises Face Tracking with Use All Tracking Keys.
+- `/avatar/parameters/UserFaceTracking` — reports whether face tracking is allowed and a source is active.
+- `/avatar/parameters/UserEyeTracking` — reports whether eye tracking data is available.
+
+**Important:** Unity Editor cannot prove that FrameEyeOSC is currently transmitting or that VRChat has received a particular OSC packet. The diagnostic is read-only and gives a checklist; verify those outputs via VRChat OSCQuery/OSC Debug and test the avatar in VRChat.
+
+### Animator / Avatar Mask diagnostics
+
+- Audits FX/Gesture playable controllers, their layers, weights, blending modes, Avatar Masks and state counts.
+- Flags a `lowarms`-named Animator layer when it is not first, but treats this as a review hint rather than proof of an error.
+- Lists `lowarms`-named hierarchy objects and their sibling indices.
+- Does not edit controllers or masks. An Avatar Mask on Gesture can be intentional; review it against the actual rig and clips.
+
+### Geometry and optimization
+
+- Provides a **quality-first polygon-reduction operation** using adaptive spatial vertex clustering, with a target slider from 5% to 80%. v0.7.0 protects vertices moved by BlendShapes, weighted to face/head/hair bones, or belonging to sensitive material submeshes; explicitly named face/skin/hair renderers remain untouched, while eligible geometry in mixed meshes can still be reduced.
+- The decimator uses finer UV/normal groups and keeps dominant plus significant secondary bone boundaries. It reports actual before/after counts per mesh and lists protected/skipped renderers. The target is not guaranteed for the whole avatar.
+- New mesh assets preserve submesh/material boundaries, UV channels, vertex colors, bindposes and skin weights on processed meshes. Spatial averaging is still lossy and can affect silhouette, UVs, normals or deformation; the original Mesh assets are never overwritten.
+- Adds **automatic SkinnedMeshRenderer merging** for groups with the same world transform, rootBone, ordered bone array, bindposes, vertex-channel layout and renderer settings (including probes, lightmap state, property blocks and motion settings). Submeshes/material slots and arbitrary bone weights are concatenated into a new Mesh asset.
+- Skinned Meshes with BlendShapes are deliberately excluded from automatic merging. Even where BlendShape data can be copied into one mesh, existing Animator/FX animation curves and VRChat avatar references target the original renderer paths. Remapping those references is not included, so merging those renderers would silently break facial/body animation.
+- Merge candidates are checked using the same strict compatibility rules as the merge operation. Animator/Playable Layer clips are inspected; pairs are rejected when a clip animates one renderer component or a transform branch that would lose its relative motion. The empty GameObjects are retained to avoid breaking hierarchy paths. Custom scripts that change renderer references, object activation or transforms at runtime cannot be fully inspected by the clip audit and must still be reviewed manually.
+- Retains the non-destructive texture workflow: it clones materials/textures on an avatar copy and applies selected resolution/compression settings.
+- Retains the Android variant workflow that registers/reuses the Android override and optimizes textures on that Android copy.
+
+**Important limitations:** vertex clustering is a geometry simplifier, not a topology-aware edge-collapse/QEM decimator. BlendShape-modified vertices, face/head/hair bone-weighted vertices and sensitive material submeshes are kept separate, but the heuristic is not a substitute for a visual check. Review every result in Unity, especially silhouette, joints, clothing seams and transparent materials. A target reduction is not a guarantee of a particular VRChat performance rank.
+
+### PCVR / Android / Quest
+
+- Retains separate Windows/PCVR and Android/Quest avatar-copy tools.
+- Retains registration through the VRChat `PerPlatformOverrides` API and audits mobile shader names, mesh counts and triangle estimates.
+- Adds an audit button for an existing Android override and an Android texture-optimization workflow.
+- Does not convert desktop shaders, strip PhysBones/Contacts, or publish automatically. Use the VRChat SDK Builder to validate the Android rank and **Multi-Platform Build & Publish** to upload both variants.
+
+**Steam Frame clarification:** when Steam Link streams the Windows VRChat client from a PC, the running VRChat session is still the Windows/PCVR platform. Creating an Android variant does not turn that streamed session into an Android session. The Android override is for Android/Quest builds.
+
+## Existing features retained
+
+- Native Unified Expressions Face Tracking configuration.
+- Bone-based Eye Look fallback.
+- `EyesTracking` toggle and safe `MainGestures` facial-layer toggle.
+- Mouse-driven local eye/blink preview with value restoration.
+- Avatar metrics and missing-script cleanup.
+- Texture/material cloning and resolution/compression optimization.
+- Android `PerPlatformOverrides` registration and audit.
+
+## Safety and limitations
+
+- Generated assets are written under `Assets/ZyumieAvatarSuite/Generated/`.
+- Source materials and textures are not modified by the texture optimizer; the avatar copy receives duplicated materials and compatible texture assets.
+- FEO duplicates FX/Gesture controllers before editing them and does not add a finger-neutralization pose.
+- The symmetric blink fallback is opt-in and explicitly reported.
+- Geometry and Animator diagnostics are read-only. Polygon reduction and renderer merging create new Mesh assets and are applied only to a duplicated avatar; the imported/source meshes are not overwritten.
+- Renderer merging excludes BlendShape-bearing meshes because Animator/FX path remapping is not implemented. It also requires identical transforms, skeleton order, bindposes and rendering settings, and rejects detected clip bindings on those renderers, object activation, or their independent transform branches. Runtime changes made by custom scripts are not automatically detected.
+- Polygon reduction locks BlendShape-modified vertices and vertices associated with sensitive face/head/hair bones or material submeshes; explicitly named sensitive renderers/meshes remain untouched. Other meshes still use lossy spatial clustering, so review UV seams, silhouettes, joints and clothing after processing.
+- The plugin does not capture or decode live FrameEyeOSC/VRChat OSC packets.
+- The archive has not been Unity-compiled or live-tested for this release. Test in a copy of your project with VRChat SDK Builder and VRChat Build & Test before publishing.
+
+## Copyright / license
+
+Copyright 2026 Zyumie. Licensed under the Apache License, Version 2.0. See `LICENSE`.
 
 Third-party SDKs, assets and avatar content remain the property of their respective owners. This package is not affiliated with or endorsed by VRChat or Unity.
+
+
+## References
+
+- VRChat Performance Ranks: https://creators.vrchat.com/avatars/avatar-performance-ranking-system/
+- VRChat PhysBones: https://creators.vrchat.com/common-components/physbones/
+- Unity `Mesh.SetBoneWeights`: https://docs.unity3d.com/2022.3/Documentation/ScriptReference/Mesh.SetBoneWeights.html
+
+## Validation status
+
+This archive has been inspected statically and ZIP integrity is checked. It has not been compiled in Unity 2022.3 with the VRChat Avatars SDK, and no avatar-specific Play Mode or VRChat upload test has been run here. The PhysBone editor pass uses `SerializedObject` property discovery to avoid a hard compile-time dependency on the SDK's internal serialized fields; if a future SDK changes those field names, the PhysBone cleanup will skip the unrecognized list and report no change. Always compare the final avatar in the VRChat SDK Builder and test it in-game.

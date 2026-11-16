@@ -1,8 +1,8 @@
 {
   "name": "fr.zyumie.avatar-suite",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "displayName": "Zyumie Avatar Suite",
-  "description": "VRChat avatar diagnostics, native Unified Expressions face tracking with safe no-blendshape fallback, gesture facial-layer toggle, safe texture optimization, and PC/Android platform override tools.",
+  "description": "VRChat avatar toolkit with selective geometry decimation for SkinnedMeshRenderer and MeshRenderer, skinning/material/PhysBone optimization, FrameEyeOSC tools, and PC/Android diagnostics.",
   "unity": "2022.3",
   "author": {
     "name": "Zyumie"

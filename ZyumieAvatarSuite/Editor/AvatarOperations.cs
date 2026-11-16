@@ -36,7 +36,7 @@ namespace Zyumie.AvatarSuite
         public static string InspectTracking(GameObject root)
         {
             var b = new StringBuilder();
-            b.AppendLine("ZYUMIE AVATAR SUITE — TRACKING DIAGNOSTIC v0.4.0");
+            b.AppendLine("ZYUMIE AVATAR SUITE — TRACKING DIAGNOSTIC v0.7.1");
             if (!root) return "Sélectionne la racine de l'avatar.";
 
             var descriptors = root.GetComponentsInChildren<VRCAvatarDescriptor>(true);
@@ -126,7 +126,9 @@ namespace Zyumie.AvatarSuite
                     string normalized = Normalize(name);
                     bool candidate = normalized.Contains("eye") || normalized.Contains("blink") || normalized.Contains("mouth") ||
                                      normalized.Contains("jaw") || normalized.Contains("brow") || normalized.Contains("lip") ||
-                                     normalized.Contains("viseme") || normalized.Contains("まばたき") || normalized.Contains("瞬き");
+                                     normalized.Contains("viseme") || normalized.Contains("afkmouseblink") ||
+                                     normalized.Contains("vrclookingup") || normalized.Contains("vrclookingdown") ||
+                                     normalized.Contains("まばたき") || normalized.Contains("瞬き");
                     if (!candidate) continue;
                     b.AppendLine("  - " + smr.name + " / " + name + " [" + i + "]");
                     if (++shown >= 80) break;
@@ -135,10 +137,16 @@ namespace Zyumie.AvatarSuite
             }
             if (shown == 0) b.AppendLine("  Aucun candidat basé sur le nom. Le mapping devra être configuré manuellement.");
 
+            b.AppendLine("\nFRAMEEYEOSC — CONFIGURATION À CONTRÔLER (hors Unity) :");
+            b.AppendLine("1. FrameEyeOSC > Basic : choisis VRChat comme sortie principale.");
+            b.AppendLine("2. FrameEyeOSC > Output : active « Send to Face Tracking too » pour /tracking/face/v1.");
+            b.AppendLine("3. Active OSC dans VRChat et vérifie que l'avatar publié a Face Tracking + Use All Tracking Keys.");
+            b.AppendLine("4. Dans VRChat/OSCQuery, vérifie /avatar/avatarfullfacetracking = true pour la configuration de l'avatar.");
+            b.AppendLine("5. Vérifie /avatar/parameters/UserFaceTracking = true quand une source de face tracking est active et autorisée.");
             b.AppendLine("\nOSC : /tracking/face/v1 attend un unique blob de 102 octets Unified Expressions.");
-            b.AppendLine("Les anciennes adresses /tracking/eye/* ne confirment pas la réception du flux /tracking/face/v1.");
-            b.AppendLine("Statuts utiles : /avatar/avatarfullfacetracking, /avatar/parameters/UserEyeTracking, /avatar/parameters/UserFaceTracking.");
-            b.AppendLine("Ce diagnostic ne lit pas le trafic OSC et ne garantit pas le résultat visuel en jeu.");
+            b.AppendLine("FrameEyeOSC documente l'envoi des clés oculaires EyeClosed/EyeWide/EyeLook, et selon les options EyeSquint, pupilles et sourcils. Les autres clés (notamment bouche) sont envoyées à 0 par ce mode.");
+            b.AppendLine("Les anciennes adresses /tracking/eye/* ne prouvent pas la réception de /tracking/face/v1. Dans le mode natif Face Tracking, FrameEyeOSC décrit une priorité du blob sur /tracking/eye/*.");
+            b.AppendLine("Ce diagnostic Unity ne lit pas le trafic OSC en direct. Les valeurs OSCQuery et le test visuel en VRChat restent nécessaires pour confirmer la réception réelle.");
             b.AppendLine("Aucune donnée du Descriptor, aucun os et aucun BlendShape n'a été modifié.");
             return b.ToString();
         }

@@ -76,12 +76,18 @@ namespace Zyumie.AvatarSuite
             public int mappedEyeLook;
             public bool leftBlink;
             public bool rightBlink;
+            public bool symmetricBlinkMapped;
             public int meshes;
             public bool nativeConfigured;
             public readonly List<string> warnings = new List<string>();
         }
 
         public static string Configure(GameObject root)
+        {
+            return Configure(root, false);
+        }
+
+        public static string Configure(GameObject root, bool allowSymmetricBlinkFallback)
         {
             if (!root) return "ERREUR : sélectionne la racine de l'avatar.";
             VRCAvatarDescriptor descriptor = root.GetComponentsInChildren<VRCAvatarDescriptor>(true).FirstOrDefault();
@@ -140,12 +146,14 @@ namespace Zyumie.AvatarSuite
                 // avatar with custom/non-standard BlendShape names can still use eye gaze.
                 ConfigureLegacyEyeLook(descriptor, eyes);
 
-                FaceTrackingResult faceTracking = ConfigureNativeFaceTracking(descriptor, root, eyes);
+                FaceTrackingResult faceTracking = ConfigureNativeFaceTracking(descriptor, root, eyes, allowSymmetricBlinkFallback);
                 report.Add("Face Tracking natif : " + (faceTracking.nativeConfigured ? "activé" : "non activé") + " — " +
                     faceTracking.mappedKeys + " clé(s) mappée(s) sur " + TrackingKeys.Length + ".");
                 report.Add("Meshes Face Tracking : " + faceTracking.meshes + "/" + MaxFaceTrackingMeshes + ".");
                 report.Add("Eye Look : " + faceTracking.mappedEyeLook + " mapping(s) EyeLook* détecté(s).");
                 report.Add("Clignement natif : gauche=" + (faceTracking.leftBlink ? "mappé" : "non mappé") + ", droite=" + (faceTracking.rightBlink ? "mappé" : "non mappé") + ".");
+                if (faceTracking.symmetricBlinkMapped)
+                    report.Add("Mapping symétrique actif : le même BlendShape ferme les deux yeux ; aucun clin d'œil indépendant ne sera possible.");
                 foreach (string warning in faceTracking.warnings) report.Add("AVERTISSEMENT : " + warning);
 
                 // Keep the original Gesture controller's content; only strip the obsolete FEO finger layer.
@@ -174,8 +182,10 @@ namespace Zyumie.AvatarSuite
                 report.Add("UserEyeTracking et UserFaceTracking sont des paramètres intégrés VRChat : FEO ne les ajoute pas aux Expression Parameters.");
                 if (faceTracking.nativeConfigured)
                 {
-                    report.Add("Pour FrameEyeOSC / Unified Expressions, la source doit envoyer le blob OSC /tracking/face/v1 (102 octets) et le Descriptor doit avoir Use All Tracking Keys activé.");
-                    report.Add("Les messages /tracking/eye/* sont le protocole OSC historique et ne remplacent pas le blob /tracking/face/v1 pour les expressions faciales natives.");
+                    report.Add("FrameEyeOSC : dans Output, choisis VRChat puis active « Send to Face Tracking too » pour envoyer /tracking/face/v1.");
+                    report.Add("Pour le regard FrameEyeOSC, Eye Gaze Mode reste sur Bone Rotation : Both superposerait les BlendShapes EyeLook aux rotations des os et peut sur-tourner les yeux.");
+                    report.Add("FrameEyeOSC envoie les clés oculaires documentées (EyeClosed, EyeWide, EyeLook et, selon les options, EyeSquint/pupilles/sourcils). Les autres clés, dont la bouche, sont envoyées à 0 dans son implémentation actuelle.");
+                    report.Add("Les clés non mappées ne modifient rien. Le blob /tracking/face/v1 (102 octets) est distinct des messages historiques /tracking/eye/*.");
                 }
                 else
                 {
@@ -184,7 +194,7 @@ namespace Zyumie.AvatarSuite
                 }
                 report.Add("Assets générés : " + folder);
                 report.Add("Contrôle final : utilise Build & Test, puis vérifie le statut OSC /avatar/avatarfullfacetracking et /avatar/parameters/UserFaceTracking.");
-                return "ZYUMIE AVATAR SUITE — FEO v0.4.0\n\n" + string.Join("\n", report);
+                return "ZYUMIE AVATAR SUITE — FEO v0.6.0\n\n" + string.Join("\n", report);
             }
             catch (Exception ex)
             {
@@ -220,7 +230,7 @@ namespace Zyumie.AvatarSuite
             EditorUtility.SetDirty(descriptor);
         }
 
-        private static FaceTrackingResult ConfigureNativeFaceTracking(VRCAvatarDescriptor descriptor, GameObject root, List<Transform> eyes)
+        private static FaceTrackingResult ConfigureNativeFaceTracking(VRCAvatarDescriptor descriptor, GameObject root, List<Transform> eyes, bool allowSymmetricBlinkFallback)
         {
             var result = new FaceTrackingResult();
             var serialized = new SerializedObject(descriptor);
@@ -237,7 +247,12 @@ namespace Zyumie.AvatarSuite
 
             var allMeshes = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                 .Where(s => s && s.sharedMesh && s.sharedMesh.blendShapeCount > 0).ToList();
-            Dictionary<string, string> keyToShape = BuildShapeMappings(allMeshes);
+            Dictionary<string, string> keyToShape = BuildShapeMappings(allMeshes, allowSymmetricBlinkFallback);
+            bool customSymmetricBlinkExists = allMeshes.SelectMany(m => Enumerable.Range(0, m.sharedMesh.blendShapeCount)
+                .Select(i => Normalize(m.sharedMesh.GetBlendShapeName(i))))
+                .Any(n => n.EndsWith("afkmouseblink", StringComparison.Ordinal));
+            if (customSymmetricBlinkExists && !allowSymmetricBlinkFallback)
+                result.warnings.Add("AFK_Mouse: Blink a été détecté mais n'a pas été assigné automatiquement. Coche l'option « Autoriser AFK_Mouse: Blink pour les deux paupières » si tu acceptes un clignement symétrique.");
             result.mappedKeys = 0;
             result.mappedEyeLook = 0;
             result.leftBlink = false;
@@ -320,7 +335,8 @@ namespace Zyumie.AvatarSuite
                 if (multiplierEntry.floatValue == 0f) multiplierEntry.floatValue = 1f;
                 if (string.IsNullOrEmpty(nameEntry.stringValue) && keyToShape.TryGetValue(TrackingKeys[i], out string shape))
                     nameEntry.stringValue = shape;
-                if (!string.IsNullOrEmpty(nameEntry.stringValue))
+                if (!string.IsNullOrEmpty(nameEntry.stringValue) &&
+                    finalMeshes.Any(mesh => HasBlendShape(mesh, nameEntry.stringValue)))
                 {
                     result.mappedKeys++;
                     if (i <= 7) result.mappedEyeLook++;
@@ -345,7 +361,10 @@ namespace Zyumie.AvatarSuite
             if (rightEye != null && rightEye.objectReferenceValue == null) rightEye.objectReferenceValue = eyes[1];
 
             SerializedProperty eyeGazeMode = serialized.FindProperty("customEyeLookSettings.eyeGazeMode");
-            if (eyeGazeMode != null && result.mappedEyeLook > 0) SetEnumValue(eyeGazeMode, "Both");
+            // FrameEyeOSC's native /tracking/face/v1 EyeLook values are designed to
+            // rotate the configured eye bones. Both additionally applies EyeLook
+            // BlendShapes and can double the apparent rotation on some avatars.
+            if (eyeGazeMode != null) SetEnumValue(eyeGazeMode, "BoneRotation");
             SerializedProperty eyelidType = serialized.FindProperty("customEyeLookSettings.eyelidType");
             if (eyelidType != null && result.leftBlink && result.rightBlink) SetEnumValue(eyelidType, "FaceTracking");
 
@@ -354,26 +373,52 @@ namespace Zyumie.AvatarSuite
             EditorUtility.SetDirty(descriptor);
             result.nativeConfigured = true;
             if (result.mappedEyeLook == 0)
-                result.warnings.Add("aucun BlendShape EyeLook* reconnu. Les yeux peuvent encore utiliser les os Eye Look, mais le flux /tracking/face/v1 ne pourra pas déplacer visuellement le regard sans mapping d'yeux compatible.");
+                result.warnings.Add("aucun BlendShape EyeLook* reconnu. Ce n'est pas bloquant avec Bone Rotation : le regard natif /tracking/face/v1 peut tourner les deux os configurés via les Rotation States du Descriptor.");
             if (!result.leftBlink || !result.rightBlink)
                 result.warnings.Add("les deux BlendShapes de paupières (EyeClosedLeft / EyeClosedRight ou alias) n'ont pas été trouvés. Le clignement doit être mappé manuellement dans le Descriptor.");
+
+            string mappedLeftBlink = ReadMappedShape(names, 9);
+            string mappedRightBlink = ReadMappedShape(names, 8);
+            result.symmetricBlinkMapped = !string.IsNullOrEmpty(mappedLeftBlink) &&
+                string.Equals(mappedLeftBlink, mappedRightBlink, StringComparison.OrdinalIgnoreCase) &&
+                Normalize(mappedLeftBlink).EndsWith("afkmouseblink", StringComparison.Ordinal);
+            if (result.symmetricBlinkMapped)
+                result.warnings.Add("AFK_Mouse: Blink est utilisé pour EyeClosedLeft et EyeClosedRight. Ce BlendShape est symétrique : il ne peut pas produire de clin d'œil indépendant.");
+
+            bool hasCustomLookUp = allMeshes.SelectMany(m => Enumerable.Range(0, m.sharedMesh.blendShapeCount)
+                .Select(i => Normalize(m.sharedMesh.GetBlendShapeName(i)))).Any(n => n.EndsWith("vrclookingup", StringComparison.Ordinal));
+            bool hasCustomLookDown = allMeshes.SelectMany(m => Enumerable.Range(0, m.sharedMesh.blendShapeCount)
+                .Select(i => Normalize(m.sharedMesh.GetBlendShapeName(i)))).Any(n => n.EndsWith("vrclookingdown", StringComparison.Ordinal));
+            if (hasCustomLookUp || hasCustomLookDown)
+                result.warnings.Add("BlendShape(s) Body: vrc_Lookingup / Body: vrc_Lookingdown détecté(s), mais non assigné(s) automatiquement aux clés EyeLook : le mode Bone Rotation est conservé pour éviter de cumuler rotation des os et déformation du regard. Vérifie ces formes manuellement avant d'utiliser Both.");
+            if (result.mappedEyeLook > 0)
+                result.warnings.Add("Des mappings BlendShape EyeLook existent. Ils sont conservés dans le Descriptor, mais Bone Rotation est sélectionné pour FrameEyeOSC ; passe à Both manuellement seulement si tu souhaites réellement superposer ces formes aux rotations des yeux.");
             return result;
         }
 
-        private static Dictionary<string, string> BuildShapeMappings(List<SkinnedMeshRenderer> meshes)
+        private static string ReadMappedShape(SerializedProperty names, int index)
+        {
+            if (names == null || !names.isArray || index < 0 || index >= names.arraySize) return string.Empty;
+            return names.GetArrayElementAtIndex(index).stringValue ?? string.Empty;
+        }
+
+        private static Dictionary<string, string> BuildShapeMappings(List<SkinnedMeshRenderer> meshes, bool allowSymmetricBlinkFallback)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string key in TrackingKeys)
             {
-                string[] candidates = ShapeAliases.ContainsKey(key)
-                    ? new[] { key }.Concat(ShapeAliases[key]).ToArray()
-                    : new[] { key };
+                var candidates = ShapeAliases.ContainsKey(key)
+                    ? new List<string>(new[] { key }.Concat(ShapeAliases[key]))
+                    : new List<string> { key };
+
+                // AFK_Mouse: Blink is only offered when the user explicitly enables
+                // the symmetric fallback in the editor window. Never silently map it.
+                if (allowSymmetricBlinkFallback && (key == "EyeClosedLeft" || key == "EyeClosedRight"))
+                    candidates.AddRange(new[] { "AFK_Mouse: Blink", "AFK_Mouse_Blink", "AFKMouseBlink" });
+
                 foreach (string candidate in candidates)
                 {
-                    string normalizedCandidate = Normalize(candidate);
-                    string found = meshes.SelectMany(s => Enumerable.Range(0, s.sharedMesh.blendShapeCount)
-                            .Select(i => s.sharedMesh.GetBlendShapeName(i)))
-                        .FirstOrDefault(name => Normalize(name) == normalizedCandidate);
+                    string found = FindBlendShapeName(meshes, candidate);
                     if (!string.IsNullOrEmpty(found))
                     {
                         result[key] = found;
@@ -382,6 +427,20 @@ namespace Zyumie.AvatarSuite
                 }
             }
             return result;
+        }
+
+        private static string FindBlendShapeName(List<SkinnedMeshRenderer> meshes, string candidate)
+        {
+            string normalizedCandidate = Normalize(candidate);
+            if (string.IsNullOrEmpty(normalizedCandidate)) return null;
+            var names = meshes.SelectMany(s => Enumerable.Range(0, s.sharedMesh.blendShapeCount)
+                .Select(i => s.sharedMesh.GetBlendShapeName(i))).Where(n => !string.IsNullOrEmpty(n)).ToList();
+
+            // Prefer exact names, then allow namespaced/prefixed shapes such as
+            // "Body: EyeBlinkLeft" or "Face: AFK_Mouse: Blink".
+            string exact = names.FirstOrDefault(name => Normalize(name) == normalizedCandidate);
+            if (!string.IsNullOrEmpty(exact)) return exact;
+            return names.FirstOrDefault(name => Normalize(name).EndsWith(normalizedCandidate, StringComparison.Ordinal));
         }
 
         private static int CountMappedShapes(SkinnedMeshRenderer renderer, IEnumerable<string> names)

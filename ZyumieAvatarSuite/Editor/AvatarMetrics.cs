@@ -8,6 +8,7 @@ namespace Zyumie.AvatarSuite
     {
         public int triangles, vertices, skinnedMeshes, basicMeshes, materialSlots, bones;
         public int animators, lights, particleSystems, physBones, physBoneColliders;
+        public int physBoneAffectedTransforms, physBoneCollisionCheckCount;
         public int contacts, constraints, lineRenderers, trailRenderers, audioSources, missingScripts;
         public int blendShapes, uniqueTextures;
         public long estimatedTextureBytes;
@@ -23,6 +24,7 @@ namespace Zyumie.AvatarSuite
             var textures = new HashSet<Texture>();
             Bounds bounds = new Bounds(root.transform.position, Vector3.zero);
             bool hasBounds = false;
+            var uniqueBoneTransforms = new HashSet<Transform>();
 
             foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
             {
@@ -34,7 +36,8 @@ namespace Zyumie.AvatarSuite
                         m.triangles += CountTriangles(smr.sharedMesh);
                         m.vertices += smr.sharedMesh.vertexCount;
                         m.blendShapes += smr.sharedMesh.blendShapeCount;
-                        m.bones += smr.bones != null ? smr.bones.Length : 0;
+                        if (smr.bones != null)
+                            foreach (Transform bone in smr.bones) if (bone) uniqueBoneTransforms.Add(bone);
                     }
                 }
                 else if (renderer is MeshRenderer)
@@ -69,6 +72,7 @@ namespace Zyumie.AvatarSuite
             }
 
             m.boundsSize = hasBounds ? bounds.size : Vector3.zero;
+            m.bones = uniqueBoneTransforms.Count;
             m.uniqueTextures = textures.Count;
             foreach (var texture in textures)
                 m.estimatedTextureBytes += (long)texture.width * texture.height * 4L;
@@ -89,6 +93,10 @@ namespace Zyumie.AvatarSuite
                 else if (type == "VRCContactSender" || type == "VRCContactReceiver") m.contacts++;
                 else if (type.Contains("Constraint")) m.constraints++;
             }
+            AvatarAdvancedOptimizer.MeasurePhysBoneStats(root, out int physBoneCount, out int physBoneColliderCount,
+                out m.physBoneAffectedTransforms, out m.physBoneCollisionCheckCount);
+            m.physBones = physBoneCount;
+            m.physBoneColliders = physBoneColliderCount;
             foreach (var transform in root.GetComponentsInChildren<Transform>(true))
                 m.missingScripts += GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(transform.gameObject);
             return m;
@@ -120,7 +128,9 @@ namespace Zyumie.AvatarSuite
             b.AppendLine("\nComposants");
             b.AppendLine("  Animator : " + m.animators);
             b.AppendLine("  PhysBones : " + m.physBones);
+            b.AppendLine("  PhysBones Affected Transforms (estimation) : " + m.physBoneAffectedTransforms);
             b.AppendLine("  PhysBone Colliders : " + m.physBoneColliders);
+            b.AppendLine("  PhysBone Collision Check Count (estimation) : " + m.physBoneCollisionCheckCount);
             b.AppendLine("  Contacts : " + m.contacts);
             b.AppendLine("  Contraintes : " + m.constraints);
             b.AppendLine("  Lights : " + m.lights);
@@ -131,15 +141,17 @@ namespace Zyumie.AvatarSuite
             b.AppendLine("\nTextures");
             b.AppendLine("  Textures uniques : " + m.uniqueTextures);
             b.AppendLine("  Mémoire brute estimée RGBA32 : " + (m.estimatedTextureBytes / 1048576f).ToString("0.0") + " MB");
-            b.AppendLine("\nRepères mobiles VRChat (indicatifs uniquement)");
-            b.AppendLine("  Triangles : Excellent ≤ 7 500 | Good ≤ 10 000 | Medium ≤ 15 000 | Poor ≤ 20 000");
-            b.AppendLine("  Skinned Meshes : 1 / 1 / 2 / 2");
-            b.AppendLine("  Basic Meshes : 1 / 1 / 2 / 2");
-            b.AppendLine("  Material Slots : 1 / 1 / 2 / 4");
-            b.AppendLine("  PhysBones : 0 / 4 / 6 / 8");
-            b.AppendLine("\nCes repères ne calculent pas le rang officiel VRChat. Utilise VRChat SDK Builder pour le résultat final.");
+            b.AppendLine("\nRepères VRChat officiels (Excellent / Good / Medium / Poor ; données vérifiées le 16/11/2026)");
+            b.AppendLine("  PC — Triangles : 32 000 / 70 000 / 70 000 / 70 000");
+            b.AppendLine("  PC — Skinned Meshes : 1 / 2 / 8 / 16 ; Material Slots : 4 / 8 / 16 / 32 ; Bones : 75 / 150 / 256 / 400");
+            b.AppendLine("  PC — PhysBones : 4 / 8 / 16 / 32 ; Affected Transforms : 16 / 64 / 128 / 256 ; Colliders : 4 / 8 / 16 / 32 ; Collision Checks : 32 / 128 / 256 / 512");
+            b.AppendLine("  Android — Triangles : 7 500 / 10 000 / 15 000 / 20 000");
+            b.AppendLine("  Android — Skinned Meshes : 1 / 1 / 2 / 2 ; Material Slots : 1 / 1 / 2 / 4 ; Bones : 75 / 90 / 150 / 150");
+            b.AppendLine("  Android — PhysBones : 0 / 4 / 6 / 8 ; Affected Transforms : 0 / 16 / 32 / 64 ; Colliders : 0 / 4 / 8 / 16 ; Collision Checks : 0 / 16 / 32 / 64");
+            b.AppendLine("\nCes repères ne calculent pas le rang officiel VRChat : le rang global suit la statistique la plus défavorable. Utilise VRChat SDK Builder pour le résultat final.");
             b.AppendLine("La mémoire des textures est une estimation brute, pas la taille compressée finale.");
-            b.AppendLine("La décimation polygonale automatique n'est pas incluse afin de préserver les BlendShapes et le skinning.");
+            b.AppendLine("Les bones sont comptés ici comme des Transform uniques référencés par les SkinnedMeshRenderer. Les counts PhysBone sont estimés depuis Root Transform / Ignore Transforms et les listes Colliders explicites.");
+            b.AppendLine("Les opérations de réduction polygonale et de fusion se trouvent dans l’onglet Optimisation et travaillent sur une copie ; vérifie toujours le résultat et les rangs dans VRChat SDK Builder.");
             return b.ToString();
         }
     }

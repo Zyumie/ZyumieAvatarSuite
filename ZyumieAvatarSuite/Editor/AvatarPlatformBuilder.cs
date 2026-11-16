@@ -84,6 +84,34 @@ namespace Zyumie.AvatarSuite
             }
         }
 
+        public static string AuditCurrentAndroidOverride(GameObject baseAvatar)
+        {
+            if (!baseAvatar) return "Sélectionne l'avatar PC/Windows de base.";
+            GameObject androidAvatar = FindSiblingOrRoot(baseAvatar, baseAvatar.name + AndroidSuffix);
+            if (!androidAvatar) return "Aucune variante " + AndroidSuffix + " trouvée. Crée d'abord l'override Android.";
+            return AuditAndroid(androidAvatar, baseAvatar, true);
+        }
+
+        public static string CreateOptimizedAndroidVariant(GameObject baseAvatar, int maxTextureSize, int compressionQuality)
+        {
+            string overrideReport = CreateOrUpdateAndroidOverride(baseAvatar);
+            if (!overrideReport.StartsWith("OVERRIDE ANDROID ENREGISTRÉ", StringComparison.Ordinal)) return overrideReport;
+
+            GameObject androidAvatar = FindSiblingOrRoot(baseAvatar, baseAvatar.name + AndroidSuffix);
+            if (!androidAvatar) return overrideReport + "\n\nERREUR : variante Android introuvable après l'enregistrement de l'override.";
+            try
+            {
+                TextureOptimizationResult optimized = AvatarTextureOptimizer.OptimizeOnAvatarCopy(androidAvatar, maxTextureSize, compressionQuality);
+                return overrideReport + "\n\nPROFIL TEXTURES ANDROID\n" + optimized.message +
+                    "\n\nLes shaders, meshes, PhysBones, Contacts et Animator restent à vérifier dans le VRChat SDK Builder Android.";
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                return overrideReport + "\n\nERREUR OPTIMISATION TEXTURES : " + ex.GetBaseException().Message;
+            }
+        }
+
         public static string AuditAndroid(GameObject androidAvatar, GameObject baseAvatar, bool includePublishSteps = true)
         {
             if (!androidAvatar) return "Sélectionne la variante Android à analyser.";
