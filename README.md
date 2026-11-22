@@ -1,206 +1,124 @@
-# 💜 Zyumie Avatar Suite
+<div align="center">
 
-**An all-in-one Unity Editor toolkit for VRChat avatar optimization, tracking configuration and cross-platform preparation.**
+# Zyumie Avatar Suite
 
-Zyumie Avatar Suite aims to simplify VRChat avatar development through automated diagnostics, non-destructive optimization, tracking tools and platform preparation.
+**A Unity Editor toolkit for VRChat avatar diagnostics, tracking setup and non-destructive optimization.**
 
-Our goal is to make avatars easier to prepare for **PCVR, Meta Quest and Steam Frame**, while preserving their appearance, expressions and tracking capabilities.
+[![Unity](https://img.shields.io/badge/Unity-2022.3-black?logo=unity)](https://unity.com/)
+[![VRChat SDK](https://img.shields.io/badge/VRChat_Avatars_SDK-3.10.6%2B-blue)](https://creators.vrchat.com/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-<details>
-<summary>🚧 Project Status</summary>
+</div>
 
-**Work in Progress — v0.4.0**
+Zyumie Avatar Suite brings common avatar checks and editing tools together in one Unity Editor workflow. It focuses on readable diagnostics, guarded quick actions, and optimization workflows that create an avatar copy instead of overwriting the original source meshes.
 
-Zyumie Avatar Suite is actively under development.
-
-Tracking integration, facial expression mapping and cross-platform compatibility are currently undergoing testing. Features and compatibility may change between releases.
-
-</details>
+> **Development status:** the repository package metadata currently reports `0.5.0`. Features and compatibility are still being tested. This README describes the current editor workflow, not a guarantee that every avatar or SDK configuration will pass validation.
 
 ---
 
-## ✨ Core Features
+## ✨ Features
 
-| Module | Description |
+| Area | Available tools |
 |---|---|
-| 🔧 Avatar Optimizer | Analyze avatar performance and optimize copied materials and textures. |
-| 🌐 Cross-Platform | Create PC and Android avatar variants and configure platform overrides. |
-| 👁️ Eye Tracking | Configure VRChat Eye Look and Bone Rotation fallback. |
-| 👄 Face Tracking | Detect BlendShapes and assist with native VRChat Unified Expressions mapping. |
-| 🎭 Gesture Controls | Configure facial FX layers associated with hand gestures. |
-| 📊 Diagnostics | Inspect tracking configuration, Expression Parameters and avatar compatibility. |
+| **Diagnostics** | Avatar performance analysis; Skinning, Materials and PhysBones audit; Animator and Avatar Mask audit; Eye Look audit; Face Tracking diagnostic; Tracking, OSC and Expression Parameters inspection. |
+| **Quick Actions** | Missing Scripts cleanup; Eye Look setup; Face Tracking (FEO) setup. Modifying actions ask for confirmation. |
+| **Optimization** | Skinning and bone-weight optimization; duplicate Material Slot consolidation; PhysBone reference cleanup; texture optimization; polygon reduction. |
+| **Preview** | Mouse-driven eye simulator for local testing. |
 
-### 🎯 Supported Platforms
+## 🧭 Unity menu
 
-- 🖥️ **PCVR / Windows** — Full desktop avatar configuration.
-- 📱 **Meta Quest** — Android avatar variant preparation.
-- 🎮 **Steam Frame** — Android platform preparation and tracking integration where supported.
+All standalone commands are grouped under **Tools → Zyumie**.
 
-Platform compatibility depends on avatar assets, shaders, SDK support and device limitations.
+- **Open Avatar Suite** — opens the main editor window.
+- **Eye Simulator (Mouse)** — opens the local eye preview directly below the main command.
+- **Diagnostic** — read-only reports and audits.
+- **Quick Actions** — operations that can modify the avatar or its setup.
 
----
+The main window is organized into three tabs: **Diagnostic**, **Actions rapides** and **Optimisation**.
 
-## 👁️ Tracking & FEO
+## 🔍 Diagnostics
 
-The **FEO (Facial & Eye Operations)** module is available through:
+The diagnostic tools inspect avatar performance metrics, Skinning, bones, Materials, PhysBones, FX/Gesture Animator controllers, Avatar Masks, VRChat Eye Look, Face Tracking BlendShape candidates and Tracking/OSC/Expression Parameters configuration.
 
-`Zyumie → Avatar Suite → Tracking`
+Diagnostic reports are intended to help identify issues. They do not replace the VRChat SDK Builder or an in-game test.
 
-The automatic setup creates copies of relevant avatar assets and adds the FEO controls to:
+## ⚙️ Quick Actions
 
-`Expressions → Function → FEO`
+Quick Actions currently include:
 
-### Eye Tracking
+- **Clean Missing Scripts** — removes missing script components from the selected avatar hierarchy.
+- **Configure Eye Look** — assists with the VRChat Avatar Descriptor Eye Look configuration.
+- **Configure Face Tracking (FEO)** — applies the suite's Face and Eye Operations setup.
 
-FEO can configure VRChat's native Eye Look using the avatar's Left Eye and Right Eye references.
+The suite displays a confirmation before these modifying operations. Back up your project and avatar before running them.
 
-When native facial tracking mappings are unavailable, the avatar can use **Bone Rotation** as an Eye Look fallback.
+## 🚀 Optimization
 
-External OSC applications such as FrameEyeOSC may provide eye tracking data through VRChat's OSC interface.
+Optimization tools currently include:
 
-Supported tracking paths include:
+- **Skinning & Bones** — reduces unnecessary skinning influences and renderer bone references where supported.
+- **Duplicate Material Slots** — consolidates repeated submeshes using the same Material asset on a renderer.
+- **PhysBones** — cleans supported redundant or null references and ignore-transform entries.
+- **Textures** — creates optimized texture/material copies for the duplicated avatar.
+- **Polygon Reduction** — applies a configurable reduction target to eligible geometry.
 
-- `/tracking/eye/*` — Eye tracking and eyelid data.
-- `/tracking/face/v1` — Native Unified Expressions face tracking.
+Optimization workflows create a separate avatar copy and generated assets. Polygon reduction is lossy: inspect silhouettes, UV seams, clothing, joints, hair and deformation before using the result. A requested reduction percentage is a target, not a guaranteed final avatar triangle count.
 
-Receiving OSC data does not automatically guarantee that the avatar is configured to animate its eyes or face.
+## 👁️ Eye & Face Tracking
 
-### Native Face Tracking
+The suite includes setup and diagnostic workflows for VRChat Eye Look and native Unified Expressions Face Tracking.
 
-FEO can inspect available SkinnedMeshRenderers and BlendShapes to assist with VRChat Unified Expressions configuration.
+- Eye Look setup uses the avatar's configured eye references where available.
+- FEO can inspect avatar renderers and BlendShapes to assist with tracking configuration.
+- The mouse eye simulator is a local preview tool; it does not prove that live headset or OSC tracking is working.
+- Face Tracking requires compatible avatar BlendShapes and valid mappings. Automatic discovery may need manual review.
+- OSC diagnostics can report configuration and expected status information, but cannot independently prove that an external application is transmitting valid live data.
 
-**Important:** Native Face Tracking requires compatible BlendShapes and valid mappings to tracking keys. Automatic detection is not guaranteed for every avatar.
+Always test tracking in VRChat with the intended headset, runtime and OSC application.
 
-When no compatible BlendShapes are found, FEO keeps the native Face Tracking setup inactive rather than assigning incorrect mappings.
-
-Manual mapping may be necessary for:
-
-- Eye gaze
-- Eyelid closure
-- Facial expressions
-- Mouth and jaw movements
-- Other Unified Expressions tracking keys
-
-### MainGestures
-
-The `MainGestures` option is designed to control facial FX layers driven by hand gesture parameters.
-
-The previous finger-neutralization system has been removed so that normal hand and finger tracking can remain active.
-
-**Known limitation:** FEO currently identifies and controls entire FX layers. A layer mixing gesture expressions with blinking or other facial animations may also have those animations disabled. This behavior is still being tested and refined.
-
----
-
-## 🌐 Cross-Platform Preparation
-
-Zyumie Avatar Suite can create a separate Android variant while keeping the selected avatar as the PC base.
-
-The platform setup uses VRChat's `PerPlatformOverrides` API to associate the Android avatar with the PC avatar.
-
-The workflow includes:
-
-- Creating or reusing an Android avatar variant.
-- Registering the Android platform override.
-- Preserving the original PC avatar.
-- Inspecting platform-specific compatibility.
-
-**Important:** Registering an Android override does not automatically convert every asset into a Quest-compatible asset.
-
-Always verify shaders, materials, textures, meshes, PhysBones, Contacts and performance in the VRChat SDK Builder.
-
-Use **Multi-Platform Build & Publish** to publish the PC and Android variants under the same Avatar ID.
-
----
-
-## 📊 Diagnostics & Optimization
-
-The toolkit includes:
-
-- Avatar performance analysis.
-- Expression Parameters budget inspection.
-- Eye Look and Face Tracking diagnostics.
-- BlendShape discovery and reporting.
-- FX Animator inspection.
-- Missing Script detection and removal.
-- Non-destructive material and texture optimization.
-
-Optimization works on a copy of the avatar and creates copied materials and compatible texture assets. Original source assets are intended to remain unchanged.
-
-No automatic removal of Colliders, Rigidbody, PhysBones or Contacts is performed.
-
----
-
-## 🧰 Requirements
+## 📦 Requirements
 
 - **Unity 2022.3 LTS**
-- **VRChat SDK - Avatars**
-- VRChat SDK **3.10.6 or newer** for the current native Face Tracking integration.
-- Compatible avatar with a valid VRC Avatar Descriptor.
+- **VRChat Avatars SDK**
+- VRChat Avatars SDK **3.10.6 or newer** for the native Unified Expressions Face Tracking workflow.
+- A valid avatar with a configured `VRC Avatar Descriptor`.
+- AV3 Demo Assets may be required when the avatar does not have custom FX or Gesture controllers assigned.
 
-Additional dependencies or SDK samples may be necessary depending on the selected features.
+## 📥 Installation
 
----
+1. Download or clone this repository.
+2. In Unity, open **Window → Package Management → Package Manager**.
+3. Select **+ → Add package from disk…**.
+4. Choose `ZyumieAvatarSuite/package.json`.
+5. Wait for Unity to compile, then open **Tools → Zyumie → Open Avatar Suite**.
 
-## 🧪 Testing Status
+For updates, back up the project, avatar and generated Animator assets, replace the package folder, reopen Unity and resolve all compilation errors before running an operation.
 
-The v0.4.1 development build includes several changes that still require validation.
+## 🧪 Validation & known limitations
 
-| Feature | Current status |
-|---|---|
-| Avatar diagnostics | Available |
-| Non-destructive texture optimization | Available |
-| Eye Look Bone Rotation setup | Testing |
-| OSC eye tracking integration | Testing |
-| Native Face Tracking mappings | In progress |
-| MainGestures facial layer control | Testing |
-| PC / Android platform override | Testing |
-| Steam Frame compatibility | Testing |
+- A successful diagnostic report does not guarantee that VRChat avatar validation or upload will succeed.
+- The VRChat SDK Builder remains authoritative for platform compatibility, performance ranks and upload validation.
+- Polygon reduction is a lossy spatial simplification. Review the result visually and test deformation.
+- Automatic Face Tracking mapping is not guaranteed for every avatar.
+- External OSC transmission and headset tracking must be tested in the actual runtime.
+- The current development build has not been certified against every Unity, VRChat SDK or avatar configuration.
 
-A successful configuration report does not replace testing in VRChat.
+Recommended workflow: back up the project, run read-only diagnostics, apply one operation at a time, inspect the generated avatar, run VRChat **Build & Test**, then validate the intended platform in the SDK Builder.
 
-Always use **Build & Test** before uploading an avatar.
+## 📚 Project files
 
----
-
-## 📚 Documentation
-
-| Document | Description |
-|---|---|
-| [📜 License](LICENSE) | Usage, redistribution and modification rights. |
-| [🤝 Contributing](CONTRIBUTING.md) | How to contribute to the project. |
-| [ℹ️ Notice](NOTICE) | Credits and third-party notices. |
-
----
-
-## 🗺️ Development Roadmap
-
-- [x] Unity Editor interface
-- [x] Avatar diagnostic engine
-- [x] Non-destructive texture optimization
-- [x] PC / Android variant creation
-- [x] Per-platform override integration
-- [x] FEO menu and controller duplication
-- [x] Eye Look Bone Rotation fallback
-- [x] Initial gesture-layer detection
-- [ ] Complete native Face Tracking BlendShape mapping
-- [ ] Improve facial-only gesture suppression
-- [ ] Validate eyelid and blink behavior
-- [ ] Full PCVR / Quest testing
-- [ ] Steam Frame compatibility validation
-- [ ] Automated tracking validation reports
-- [ ] First stable release
-
----
+- [Package documentation](ZyumieAvatarSuite/README.md)
+- [License](LICENSE)
+- [Contributing](CONTRIBUTING.md)
+- [Third-party notices](NOTICE)
 
 ## 💜 Credits
 
-**Created and maintained by Zyumie.**
+Created and maintained by **Zyumie**.
 
 Developed with assistance from OpenAI ChatGPT for architecture, documentation, code drafting and debugging.
 
-Third-party SDKs, libraries and avatar assets remain the property of their respective owners.
-
-Community contributions and improvements are welcome!
+Unity, VRChat and third-party SDKs, libraries and avatar assets remain the property of their respective owners. This project is not affiliated with or endorsed by Unity or VRChat.
 
 ---
 
