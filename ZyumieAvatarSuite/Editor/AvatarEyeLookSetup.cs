@@ -7,18 +7,6 @@ using VRC.SDK3.Avatars.Components;
 
 namespace Zyumie.AvatarSuite
 {
-    /// <summary>
-    /// Configuration du MODE B : Eye Look natif VRChat.
-    /// FrameEyeOSC (Steam Frame → streaming PC) envoie /tracking/eye/* que VRChat
-    /// traite en interne quand enableEyeLook = true. Aucun layer Animator, aucun
-    /// paramètre FT, aucun BlendShape EyeLook n'est requis.
-    ///
-    /// Limites Mode B :
-    ///  - Le clignement ferme les DEUX yeux (pas de clin d'œil indépendant).
-    ///  - EyeWide (yeux écarquillés) n'est PAS transmis.
-    ///  - Pas de pupilles/sourcils dynamiques.
-    /// Pour un contrôle complet, utiliser VRCFaceTracking (Mode A).
-    /// </summary>
     internal static class AvatarEyeLookSetup
     {
         private static readonly string[] LeftEyeTokens = {
@@ -32,10 +20,6 @@ namespace Zyumie.AvatarSuite
             "まばたき", "瞬き", "めばたき", "clignement"
         };
 
-        /// <summary>
-        /// Applique la configuration Eye Look sur le descriptor de l'avatar.
-        /// Retourne un rapport textuel détaillé.
-        /// </summary>
         public static string Configure(GameObject avatar)
         {
             if (!avatar) return "Sélectionne la racine de l'avatar.";
@@ -118,7 +102,6 @@ namespace Zyumie.AvatarSuite
                     else
                     {
                         sb.AppendLine("   - ❌ Aucun BlendShape de clignement détecté. Assignation manuelle requise.");
-                        sb.AppendLine("     Candidats examinés : " + string.Join(", ", BlinkTokens));
                     }
                 }
             }
@@ -136,7 +119,6 @@ namespace Zyumie.AvatarSuite
                     stateProp.enumValueIndex = enabledIndex;
                     if (angleProp != null) angleProp.floatValue = 45f;
                     sb.AppendLine("4. Rotations : ACTIVÉES, angle 45° (par défaut).");
-                    sb.AppendLine("   → Ajuste l'angle dans le Descriptor si les yeux débordent.");
                 }
                 else
                 {
@@ -148,25 +130,15 @@ namespace Zyumie.AvatarSuite
             EditorUtility.SetDirty(descriptor);
             AssetDatabase.SaveAssets();
 
-            sb.AppendLine();
-            sb.AppendLine("=== LIMITES DU MODE B (à connaître) ===");
-            sb.AppendLine(" ✔ Gaze (regard) : transmis");
-            sb.AppendLine(" ✔ Clignement : transmis, mais les DEUX yeux ensemble (pas de clin d'œil séparé)");
-            sb.AppendLine(" ✘ EyeWide (yeux écarquillés) : non transmis");
-            sb.AppendLine(" ✘ Pupilles / sourcils dynamiques : non transmis");
-            sb.AppendLine();
-            sb.AppendLine("=== CÔTÉ CASQUE / PC ===");
+            sb.AppendLine("\n=== CÔTÉ CASQUE / PC ===");
             sb.AppendLine("1. FrameEyeOSC (Steam Frame) → Basic → VRChat");
             sb.AppendLine("2. FrameEyeOSC → Output → ✔ 'Send to Face Tracking too'");
             sb.AppendLine("3. VRChat PC → Action Menu → Options → OSC → Enabled");
             sb.AppendLine("4. SteamVR → Paramètres → Steam Link → OSC → DÉSACTIVÉ");
-            sb.AppendLine("   (sinon deux sources se battent pour les yeux)");
-            sb.AppendLine("5. Réuploade l'avatar.");
 
             return sb.ToString();
         }
 
-        /// <summary>Audit lecture seule, sans rien modifier.</summary>
         public static string Audit(GameObject avatar)
         {
             if (!avatar) return "Sélectionne la racine de l'avatar.";
@@ -178,8 +150,6 @@ namespace Zyumie.AvatarSuite
             so.Update();
             var sb = new StringBuilder();
             sb.AppendLine("ZYUMIE — AUDIT MODE B (Eye Look natif)");
-            sb.AppendLine("Avatar : " + avatar.name);
-            sb.AppendLine();
 
             var enable = so.FindProperty("enableEyeLook");
             sb.AppendLine("Eye Look activé : " + (enable != null ? enable.boolValue.ToString() : "champ introuvable"));
@@ -192,43 +162,7 @@ namespace Zyumie.AvatarSuite
             var eyelidType = so.FindProperty("customEyeLookSettings.eyelidType");
             if (eyelidType != null)
                 sb.AppendLine("Eyelid Type : " + (eyelidType.enumValueIndex < eyelidType.enumNames.Length ? eyelidType.enumNames[eyelidType.enumValueIndex] : "?"));
-            else
-                sb.AppendLine("Eyelid Type : champ introuvable");
 
-            var eyelidMesh = so.FindProperty("customEyeLookSettings.eyelidsSkinnedMesh")?.objectReferenceValue as SkinnedMeshRenderer;
-            sb.AppendLine("Eyelid Mesh : " + (eyelidMesh ? eyelidMesh.name : "aucun"));
-
-            var blinkIndices = so.FindProperty("customEyeLookSettings.eyelidsBlendshapes");
-            if (blinkIndices != null && blinkIndices.arraySize > 0 && eyelidMesh && eyelidMesh.sharedMesh)
-            {
-                sb.Append("BlendShapes configurés : ");
-                for (int i = 0; i < blinkIndices.arraySize; i++)
-                {
-                    int idx = blinkIndices.GetArrayElementAtIndex(i).intValue;
-                    if (idx >= 0 && idx < eyelidMesh.sharedMesh.blendShapeCount)
-                        sb.Append("[" + eyelidMesh.sharedMesh.GetBlendShapeName(idx) + "] ");
-                }
-                sb.AppendLine();
-            }
-            else
-            {
-                sb.AppendLine("BlendShapes configurés : aucun");
-            }
-
-            var rotations = so.FindProperty("customEyeLookSettings.eyeRotations");
-            if (rotations != null)
-            {
-                var state = rotations.FindPropertyRelative("state");
-                var angle = rotations.FindPropertyRelative("angle");
-                if (state != null)
-                    sb.AppendLine("Rotations : " + state.enumNames[state.enumValueIndex] +
-                                  (angle != null ? " (" + angle.floatValue + "°)" : ""));
-            }
-
-            sb.AppendLine();
-            sb.AppendLine("Rappel : en Mode B, VRChat applique /tracking/eye/* sans aucune couche Animator.");
-            sb.AppendLine("Si l'audit passe mais que le tracking ne marche pas dans VRChat, le problème est côté");
-            sb.AppendLine("OSC (FrameEyeOSC pas lancé, OSC désactivé dans VRChat, Steam Link OSC conflictuel).");
             return sb.ToString();
         }
 

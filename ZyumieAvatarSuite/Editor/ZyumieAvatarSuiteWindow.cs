@@ -9,366 +9,189 @@ namespace Zyumie.AvatarSuite
     {
         private GameObject avatar;
         private Vector2 scroll;
-        private string report = "Sélectionne la racine de ton avatar puis lance une analyse.";
+        private string report = "👋 Bienvenue dans Zyumie Avatar Suite.\n\n1. Sélectionne ton avatar dans la scène.\n2. Choisis un onglet ci-dessus.\n3. Lance une action.";
         private int tab;
+
         private int textureMaxSize = 1024;
         private int compressionQuality = 50;
         private int polygonReductionPercent = 35;
         private int maxBoneInfluences = 4;
         private float minimumBoneWeightPercent = 0.5f;
-        private bool removeOrphanedPhysBoneColliders;
 
-        // État d'ouverture/fermeture des sections repliables
         private bool showSafeSection = true;
         private bool showModerateSection = false;
-        private bool showHeavySection = false;
         private bool showToolboxSection = false;
 
-        [MenuItem("Zyumie/Avatar Suite")]
         public static void Open()
         {
             var window = GetWindow<ZyumieAvatarSuiteWindow>("Zyumie Avatar Suite");
-            window.minSize = new Vector2(700, 800);
+            window.minSize = new Vector2(750, 850);
+            window.Show();
         }
 
         private void OnGUI()
         {
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("ZYUMIE AVATAR SUITE", EditorStyles.largeLabel);
-            EditorGUILayout.LabelField("v0.8.0 • VRChat • PCVR • Android / Quest • FrameEyeOSC (Mode B)",
-                EditorStyles.miniLabel);
-            EditorGUILayout.Space(6);
+            EditorGUILayout.Space(10);
+            GUILayout.Label("ZYUMIE AVATAR SUITE", new GUIStyle(EditorStyles.largeLabel) { fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter });
+            GUILayout.Label("Optimisation & Analytics • VRChat", new GUIStyle(EditorStyles.centeredGreyMiniLabel));
+            EditorGUILayout.Space(10);
 
-            avatar = (GameObject)EditorGUILayout.ObjectField("Avatar Root", avatar, typeof(GameObject), true);
-            if (!avatar && Selection.activeGameObject) avatar = Selection.activeGameObject;
-
-            if (avatar && !IsWorkingCopy(avatar) && tab == 1)
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                EditorGUILayout.HelpBox(
-                    "⚠ Cet avatar ne ressemble pas à une COPIE. Les optimisations créent une copie " +
-                    "automatiquement, mais tu peux le faire manuellement d'abord si tu préfères.",
-                    MessageType.Warning);
+                avatar = (GameObject)EditorGUILayout.ObjectField("🎯 Avatar Cible", avatar, typeof(GameObject), true);
+                if (!avatar && Selection.activeGameObject) avatar = Selection.activeGameObject;
             }
 
-            tab = GUILayout.Toolbar(tab, new[] { "🔍 Analyse", "⚙ Optimisation", "👁 Tracking", "📱 Plateformes" });
-            EditorGUILayout.Space(6);
+            // 3 Onglets propres
+            tab = GUILayout.Toolbar(tab, new[] { "📊 Diagnostics", "⚙ Optimisation", "👁 Configuration Tracking" }, GUILayout.Height(30));
+            EditorGUILayout.Space(10);
 
             using (new EditorGUI.DisabledScope(!avatar))
             {
                 switch (tab)
                 {
-                    case 0: DrawAnalysis(); break;
-                    case 1: DrawOptimization(); break;
-                    case 2: DrawTracking(); break;
-                    case 3: DrawPlatforms(); break;
+                    case 0: DrawDiagnosticsTab(); break;
+                    case 1: DrawOptimizationTab(); break;
+                    case 2: DrawTrackingTab(); break;
                 }
             }
 
-            EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("Rapport", EditorStyles.boldLabel);
-            using (var sv = new EditorGUILayout.ScrollViewScope(scroll, GUILayout.ExpandHeight(true)))
+            EditorGUILayout.Space(15);
+            EditorGUILayout.LabelField("📝 Rapport", EditorStyles.boldLabel);
+            using (var sv = new EditorGUILayout.ScrollViewScope(scroll, EditorStyles.textArea, GUILayout.ExpandHeight(true)))
             {
                 scroll = sv.scrollPosition;
                 EditorGUILayout.TextArea(report, GUILayout.ExpandHeight(true));
             }
+
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Copier")) EditorGUIUtility.systemCopyBuffer = report;
-                if (GUILayout.Button("Exporter .txt")) ExportReport();
+                if (GUILayout.Button("📋 Copier", GUILayout.Height(25))) EditorGUIUtility.systemCopyBuffer = report;
+                if (GUILayout.Button("💾 Exporter .txt", GUILayout.Height(25))) ExportReport();
             }
-            EditorGUILayout.Space(4);
-            EditorGUILayout.HelpBox(
-                "Les diagnostics sont en lecture seule. Les optimisations travaillent sur une copie et créent " +
-                "des assets séparés. Valide toujours le résultat avec VRChat SDK Builder.",
-                MessageType.Info);
         }
 
-        private static bool IsWorkingCopy(GameObject go)
+        // ═══════════════════════════════════════════════════════════════
+        //  ONGLET 1 : TOUS LES DIAGNOSTICS
+        // ═══════════════════════════════════════════════════════════════
+        private void DrawDiagnosticsTab()
         {
-            string n = go.name;
-            return n.Contains("Copy") || n.Contains("Zyumie") || n.Contains("_Optimized") ||
-                   n.Contains("_Decimated") || n.Contains("_Merged") || n.Contains("_Android") ||
-                   n.Contains("_Windows");
-        }
+            EditorGUILayout.HelpBox("Les diagnostics sont en lecture seule. Ils ne modifient pas ton avatar.", MessageType.Info);
+            EditorGUILayout.Space(5);
 
-        // ─────────────────────────────────────────────────────────────
-        private void DrawAnalysis()
-        {
-            if (GUILayout.Button("📊 Analyser l'avatar (métriques complètes)", GUILayout.Height(38)))
+            if (GUILayout.Button("📊 Analyse de performance complète", GUILayout.Height(40)))
                 report = AvatarAnalyzer.Report(avatar, AvatarAnalyzer.Analyze(avatar));
-            if (GUILayout.Button("🧩 Audit meshes / fusions possibles", GUILayout.Height(34)))
-                report = AvatarGeometryDiagnostics.Report(avatar);
-            if (GUILayout.Button("🦴 Audit Skinning / Materials / PhysBones", GUILayout.Height(34)))
+
+            if (GUILayout.Button("🦴 Audit Skinning / Materials / PhysBones", GUILayout.Height(35)))
                 report = AvatarAdvancedOptimizer.Report(avatar);
-            if (GUILayout.Button("🎞 Audit Animator / Avatar Masks", GUILayout.Height(34)))
+
+            if (GUILayout.Button("🎞 Audit Animator / Avatar Masks", GUILayout.Height(35)))
                 report = AvatarAnimatorDiagnostics.Report(avatar);
-            if (GUILayout.Button("👁 Audit Eye Look (Mode B) + FrameEyeOSC", GUILayout.Height(34)))
+
+            if (GUILayout.Button("👁 Audit Eye Look (Mode B)", GUILayout.Height(35)))
                 report = AvatarEyeLookSetup.Audit(avatar);
-            EditorGUILayout.Space(4);
-            EditorGUILayout.HelpBox(
-                "L'audit géométrique liste les meshes les plus lourds et les groupes réellement " +
-                "compatibles avec la fusion automatique conservatrice.",
-                MessageType.None);
+
+            if (GUILayout.Button("🔬 Diagnostic Face Tracking complet", GUILayout.Height(35)))
+                report = FaceTrackingDiagnostic.Run(avatar);
         }
 
-        // ─────────────────────────────────────────────────────────────
-        private void DrawOptimization()
+        // ═══════════════════════════════════════════════════════════════
+        //  ONGLET 2 : OPTIMISATION
+        // ═══════════════════════════════════════════════════════════════
+        private void DrawOptimizationTab()
         {
-            EditorGUILayout.HelpBox(
-                "Toutes les opérations géométriques créent d'abord une copie de l'avatar " +
-                "et des Mesh assets distincts. Les meshes source restent inchangés.",
-                MessageType.Info);
+            EditorGUILayout.HelpBox("Les opérations créent une COPIE de l'avatar. Les meshes originaux ne sont jamais écrasés.", MessageType.Info);
+            EditorGUILayout.Space(5);
 
-            // Section SÛR
-            showSafeSection = EditorGUILayout.BeginFoldoutHeaderGroup(showSafeSection, "🟢 SÛR — aucune perte visuelle attendue");
+            showSafeSection = EditorGUILayout.BeginFoldoutHeaderGroup(showSafeSection, "🟢 Optimisations SÛRES (Aucune perte)");
             if (showSafeSection)
             {
                 using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
                 {
-                    maxBoneInfluences = EditorGUILayout.IntPopup("Influences max / vertex", maxBoneInfluences,
-                        new[] { "2", "4", "8" }, new[] { 2, 4, 8 });
-                    minimumBoneWeightPercent = EditorGUILayout.Slider("Poids minimal conservé (%)",
-                        minimumBoneWeightPercent, 0f, 5f);
+                    if (GUILayout.Button("🔧 Optimiser Skinning & Bones", GUILayout.Height(30)))
+                        RunSafe("Skinning", () => AvatarAdvancedOptimizer.OptimizeSkinningAndBonesOnAvatarCopy(CreateCopy("_SkinningOpt"), 4, 0.005f).Summary("SKINNING"));
 
-                    if (GUILayout.Button("🔧 Optimiser Skinning & Bones", GUILayout.Height(32)))
-                    {
-                        var copy = MakeCopy("_SkinningOptimized");
-                        if (copy)
-                            RunSafe(() => AvatarAdvancedOptimizer
-                                .OptimizeSkinningAndBonesOnAvatarCopy(copy, maxBoneInfluences, minimumBoneWeightPercent / 100f)
-                                .Summary("OPTIMISATION SKINNING / BONES"), copy);
-                    }
+                    if (GUILayout.Button("🎨 Fusionner les Material Slots identiques", GUILayout.Height(30)))
+                        RunSafe("Materials", () => AvatarAdvancedOptimizer.MergeDuplicateMaterialSlotsOnAvatarCopy(CreateCopy("_MaterialsOpt")).Summary("MATERIALS"));
 
-                    if (GUILayout.Button("🎨 Fusionner les Material Slots identiques", GUILayout.Height(32)))
-                    {
-                        var copy = MakeCopy("_MaterialSlotsOptimized");
-                        if (copy)
-                            RunSafe(() => AvatarAdvancedOptimizer
-                                .MergeDuplicateMaterialSlotsOnAvatarCopy(copy)
-                                .Summary("OPTIMISATION MATERIAL SLOTS"), copy);
-                    }
-
-                    removeOrphanedPhysBoneColliders = EditorGUILayout.ToggleLeft(
-                        "Supprimer aussi les PhysBoneColliders non globaux non référencés", removeOrphanedPhysBoneColliders);
-
-                    if (GUILayout.Button("🪢 Nettoyer les PhysBones (refs / ignore)", GUILayout.Height(32)))
-                    {
-                        var copy = MakeCopy("_PhysBonesOptimized");
-                        if (!copy) return;
-                        if (removeOrphanedPhysBoneColliders && !EditorUtility.DisplayDialog(
-                            "Supprimer les colliders orphelins ?",
-                            "Seuls les VRCPhysBoneCollider non globaux et non référencés sont supprimés. " +
-                            "Des scripts personnalisés pourraient les chercher par nom. Continuer ?",
-                            "Supprimer sur la copie", "Annuler")) return;
-                        RunSafe(() => AvatarAdvancedOptimizer
-                            .OptimizePhysBonesOnAvatarCopy(copy, removeOrphanedPhysBoneColliders)
-                            .Summary("OPTIMISATION PHYSBONES"), copy);
-                    }
+                    if (GUILayout.Button("🪢 Nettoyer les PhysBones (refs / ignore)", GUILayout.Height(30)))
+                        RunSafe("PhysBones", () => AvatarAdvancedOptimizer.OptimizePhysBonesOnAvatarCopy(CreateCopy("_PhysBonesOpt"), false).Summary("PHYSBONES"));
                 }
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
 
-            // Section MODÉRÉ
-            showModerateSection = EditorGUILayout.BeginFoldoutHeaderGroup(showModerateSection, "🟠 MODÉRÉ — vérifie visuellement après");
+            showModerateSection = EditorGUILayout.BeginFoldoutHeaderGroup(showModerateSection, "🟠 Optimisations MODÉRÉES (À vérifier)");
             if (showModerateSection)
             {
                 using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
                 {
-                    EditorGUILayout.HelpBox(
-                        "Fusion : uniquement les renderers STRICTEMENT compatibles (même transform, " +
-                        "rootBone, bindposes, ordre des bones, réglages de rendu). " +
-                        "Les BlendShapes et renderers animés sont exclus.",
-                        MessageType.None);
+                    if (GUILayout.Button("🖼 Optimiser les Textures", GUILayout.Height(30)))
+                        RunSafe("Textures", () => AvatarTextureOptimizer.OptimizeOnAvatarCopy(CreateCopy("_TexturesOpt"), 1024, 50).message);
 
-                    if (GUILayout.Button("🧬 Fusionner les SkinnedMeshRenderers compatibles", GUILayout.Height(32)))
-                    {
-                        var copy = MakeCopy("_Merged");
-                        if (copy)
-                            RunSafe(() => AvatarSkinnedMeshMerger
-                                .MergeCompatibleOnAvatarCopy(copy)
-                                .Summary("FUSION DES SKINNED MESHES"), copy);
-                    }
-
-                    polygonReductionPercent = EditorGUILayout.IntSlider("Réduction cible (%)",
-                        polygonReductionPercent, 5, 50);
-                    EditorGUILayout.HelpBox(
-                        "La réduction inclut les SkinnedMeshRenderers et les MeshRenderers statiques. " +
-                        "Les zones Face/Head/Body/Hair/Eye sont protégées, ainsi que les vertices bougés " +
-                        "par BlendShapes. Les vêtements/accessoires sont réduits.",
-                        MessageType.None);
-
-                    if (GUILayout.Button("📐 Créer une copie + réduire les polygones", GUILayout.Height(32)))
-                    {
-                        var copy = MakeCopy("_Decimated");
-                        if (copy)
-                            RunSafe(() => AvatarMeshOptimizer
-                                .ReduceOnAvatarCopy(copy, polygonReductionPercent)
-                                .Summary("RÉDUCTION POLYGONALE"), copy);
-                    }
+                    polygonReductionPercent = EditorGUILayout.IntSlider("Réduction ciblée (%)", polygonReductionPercent, 5, 50);
+                    if (GUILayout.Button("📐 Réduire les polygones", GUILayout.Height(30)))
+                        RunSafe("Polygones", () => AvatarMeshOptimizer.ReduceOnAvatarCopy(CreateCopy("_Decimated"), polygonReductionPercent).Summary("POLYGONES"));
                 }
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
 
-            // Section LOURD
-            showHeavySection = EditorGUILayout.BeginFoldoutHeaderGroup(showHeavySection, "🔴 LOURD — perte visuelle possible");
-            if (showHeavySection)
-            {
-                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-                {
-                    EditorGUILayout.HelpBox(
-                        "Réduction polygonale agressive : à utiliser sur les vêtements ou accessoires " +
-                        "secondaires. Vérifie toujours le résultat sur une COPIE avant publication.",
-                        MessageType.Warning);
-
-                    if (GUILayout.Button("⚡ Créer une copie + réduction 60 %", GUILayout.Height(32)))
-                    {
-                        if (!EditorUtility.DisplayDialog("Réduction agressive",
-                            "Une réduction de 60 % peut déformer les silhouettes et les articulations. Continuer ?",
-                            "Continuer", "Annuler")) return;
-                        var copy = MakeCopy("_Decimated60");
-                        if (copy)
-                            RunSafe(() => AvatarMeshOptimizer
-                                .ReduceOnAvatarCopy(copy, 60)
-                                .Summary("RÉDUCTION POLYGONALE 60%"), copy);
-                    }
-                }
-            }
-            EditorGUILayout.EndFoldoutHeaderGroup();
-
-            // Section BOÎTE À OUTILS
-            showToolboxSection = EditorGUILayout.BeginFoldoutHeaderGroup(showToolboxSection, "🧰 Boîte à outils");
+            showToolboxSection = EditorGUILayout.BeginFoldoutHeaderGroup(showToolboxSection, "🧰 Boîte à outils & Paramètres");
             if (showToolboxSection)
             {
                 using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
                 {
-                    DrawTextureSettings();
-
-                    if (GUILayout.Button("🖼 Créer une copie + optimiser les textures", GUILayout.Height(32)))
+                    if (GUILayout.Button("⚡ Optimiser les paramètres (Fix Bits)", GUILayout.Height(30)))
                     {
-                        var copy = MakeCopy("_TextureOptimized");
-                        if (copy)
-                        {
-                            try
-                            {
-                                report = AvatarTextureOptimizer
-                                    .OptimizeOnAvatarCopy(copy, textureMaxSize, compressionQuality).message;
-                            }
-                            catch (Exception ex) { report = "Erreur textures :\n" + ex; Debug.LogException(ex); }
-                        }
+                        AutoParameterOptimizer.OptimizeParameters();
+                        report = "Optimisation des paramètres lancée. Regarde la Console Unity pour voir combien de bits ont été économisés.";
                     }
 
-                    if (GUILayout.Button("🧹 Supprimer les Missing Scripts (Undo possible)", GUILayout.Height(32)))
+                    if (GUILayout.Button("🧹 Supprimer les Missing Scripts", GUILayout.Height(30)))
                     {
-                        if (EditorUtility.DisplayDialog("Nettoyer les Missing Scripts ?",
-                            "Cette action est annulable. Sauvegarde recommandée.", "Supprimer", "Annuler"))
-                            report = "Composants Missing Script supprimés : " + AvatarOperations.RemoveMissingScripts(avatar);
-                    }
-
-                    if (GUILayout.Button("🚀 Optimisation avancée complète (SÛR)", GUILayout.Height(38)))
-                    {
-                        var copy = MakeCopy("_AdvancedOptimized");
-                        if (!copy) return;
-                        if (removeOrphanedPhysBoneColliders && !EditorUtility.DisplayDialog(
-                            "Optimisation complète",
-                            "La copie sera optimisée puis les colliders PhysBone non globaux et non référencés supprimés. Continuer ?",
-                            "Continuer", "Annuler")) return;
-                        try
-                        {
-                            var sb = new System.Text.StringBuilder();
-                            sb.AppendLine(AvatarAdvancedOptimizer
-                                .OptimizeSkinningAndBonesOnAvatarCopy(copy, maxBoneInfluences, minimumBoneWeightPercent / 100f)
-                                .Summary("SKINNING / BONES"));
-                            sb.AppendLine(AvatarSkinnedMeshMerger
-                                .MergeCompatibleOnAvatarCopy(copy)
-                                .Summary("FUSION SKINNED MESHES"));
-                            sb.AppendLine(AvatarAdvancedOptimizer
-                                .MergeDuplicateMaterialSlotsOnAvatarCopy(copy)
-                                .Summary("MATERIAL SLOTS"));
-                            sb.AppendLine(AvatarAdvancedOptimizer
-                                .OptimizePhysBonesOnAvatarCopy(copy, removeOrphanedPhysBoneColliders)
-                                .Summary("PHYSBONES"));
-                            report = sb.ToString();
-                        }
-                        catch (Exception ex) { report = "Erreur optimisation complète :\n" + ex; Debug.LogException(ex); }
+                        if (EditorUtility.DisplayDialog("Nettoyage", "Supprimer les scripts manquants ?", "Oui", "Annuler"))
+                            report = $"Missing Scripts supprimés : {AvatarOperations.RemoveMissingScripts(avatar)}";
                     }
                 }
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
-        // ─────────────────────────────────────────────────────────────
-        private void DrawTracking()
+        // ═══════════════════════════════════════════════════════════════
+        //  ONGLET 3 : CONFIGURATION DU TRACKING
+        // ═══════════════════════════════════════════════════════════════
+        private void DrawTrackingTab()
         {
-            EditorGUILayout.HelpBox(
-                "MODE B — Eye Look natif VRChat. FrameEyeOSC (Steam Frame → PC) envoie " +
-                "/tracking/eye/* que VRChat traite en interne. Aucun Animator layer, aucun paramètre FT. " +
-                "Limite : clignement symétrique uniquement, pas d'EyeWide.",
-                MessageType.Info);
+            EditorGUILayout.HelpBox("Configuration de l'Eye Look et du Face Tracking.", MessageType.Info);
+            EditorGUILayout.Space(5);
 
-            if (GUILayout.Button("👁 Configurer Eye Look natif (Mode B)", GUILayout.Height(38)))
-                report = AvatarEyeLookSetup.Configure(avatar);
+            EditorGUILayout.LabelField("👁 Mode B : Eye Look Natif (FrameEyeOSC)", EditorStyles.boldLabel);
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                if (GUILayout.Button("Configurer le suivi des yeux (Eye Look)", GUILayout.Height(35)))
+                    report = AvatarEyeLookSetup.Configure(avatar);
+            }
 
-            if (GUILayout.Button("🔍 Auditer Eye Look / FrameEyeOSC", GUILayout.Height(34)))
-                report = AvatarEyeLookSetup.Audit(avatar);
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("🧠 Mode A : Face Tracking Complet (VRCFT/FEO)", EditorStyles.boldLabel);
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                if (GUILayout.Button("⚙ Configurer le Face Tracking Natif (FEO)", GUILayout.Height(35)))
+                    report = FEOAutoIntegration.Configure(avatar);
+            }
 
-            EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Diagnostics complémentaires", EditorStyles.boldLabel);
-
-            if (GUILayout.Button("🔬 Diagnostic tracking complet (Eye Look + Face Tracking + FEO)", GUILayout.Height(32)))
-                report = AvatarOperations.InspectTracking(avatar);
-
-            if (GUILayout.Button("🎞 Diagnostic Animator / Avatar Masks", GUILayout.Height(32)))
-                report = AvatarAnimatorDiagnostics.Report(avatar);
-
-            EditorGUILayout.Space(8);
-            EditorGUILayout.HelpBox(
-                "FrameEyeOSC : Basic → VRChat | Output → ✔ 'Send to Face Tracking too' (ou 'native_eyes'). " +
-                "VRChat : Options → OSC → Enabled. Steam Link OSC → DÉSACTIVÉ.",
-                MessageType.Warning);
-
-            EditorGUILayout.HelpBox(
-                "Si tu veux le clin d'œil indépendant + EyeWide + pupilles dynamiques, il faut passer " +
-                "en Mode A (VRCFaceTracking + paramètres FT/v2/...). Le Mode B est plus simple mais limité.",
-                MessageType.None);
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("🖱 Outils de test", EditorStyles.boldLabel);
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                if (GUILayout.Button("🖱 Ouvrir le Simulateur d'Yeux (Souris)", GUILayout.Height(30)))
+                    FEOMouseEyeSimulator.Open(avatar);
+            }
         }
 
-        // ─────────────────────────────────────────────────────────────
-        private void DrawPlatforms()
-        {
-            EditorGUILayout.HelpBox(
-                "Les profils PCVR et Android/Quest sont des variantes distinctes. " +
-                "Un override Android ne convertit pas automatiquement les shaders ni les meshes du PC.",
-                MessageType.Info);
-
-            if (GUILayout.Button("📦 Créer / mettre à jour le pack CROSS-PLATFORM", GUILayout.Height(40)))
-                report = AvatarPlatformBuilder.CreateOrUpdateAndroidOverride(avatar);
-            if (GUILayout.Button("🔎 Auditer la variante Android / Quest existante", GUILayout.Height(34)))
-                report = AvatarPlatformBuilder.AuditCurrentAndroidOverride(avatar);
-
-            EditorGUILayout.Space(6);
-            DrawTextureSettings();
-            if (GUILayout.Button("📦 Créer / mettre à jour Android + textures optimisées", GUILayout.Height(38)))
-                report = AvatarPlatformBuilder.CreateOptimizedAndroidVariant(avatar, textureMaxSize, compressionQuality);
-
-            EditorGUILayout.Space(6);
-            if (GUILayout.Button("📱 Créer une copie Android / Quest")) MakeCopyReport("_Android_Quest");
-            if (GUILayout.Button("🖥 Créer une copie Windows / PCVR")) MakeCopyReport("_Windows_PCVR");
-
-            EditorGUILayout.HelpBox(
-                "Steam Frame en streaming Steam Link exécute la session VRChat PC sur Windows. " +
-                "Le profil à utiliser pour ton cas (FrameEyeOSC) est PCVR, pas Android.",
-                MessageType.Warning);
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        private void DrawTextureSettings()
-        {
-            textureMaxSize = EditorGUILayout.IntPopup("Résolution maximale", textureMaxSize,
-                new[] { "512", "1024", "2048", "4096" }, new[] { 512, 1024, 2048, 4096 });
-            compressionQuality = EditorGUILayout.IntSlider("Qualité compression", compressionQuality, 0, 100);
-        }
-
-        private GameObject MakeCopy(string suffix)
+        // ═══════════════════════════════════════════════════════════════
+        //  FONCTIONS UTILITAIRES
+        // ═══════════════════════════════════════════════════════════════
+        private GameObject CreateCopy(string suffix)
         {
             var copy = AvatarOperations.CreatePlatformCopy(avatar, suffix);
             if (!copy) { report = "Impossible de créer la copie."; return null; }
@@ -377,28 +200,16 @@ namespace Zyumie.AvatarSuite
             return copy;
         }
 
-        private void MakeCopyReport(string suffix)
+        private void RunSafe(string operationName, Func<string> action)
         {
-            var copy = MakeCopy(suffix);
-            if (!copy) return;
-            report = "Copie créée : " + copy.name +
-                     "\nAucun composant ni shader n'a été converti automatiquement.";
-        }
-
-        private void RunSafe(Func<string> action, GameObject context)
-        {
-            try { report = action(); }
-            catch (Exception ex)
-            {
-                report = "Erreur pendant l'opération sur " + context.name + " :\n" + ex;
-                Debug.LogException(ex);
-            }
+            try { report = $"✅ '{operationName}' terminé :\n\n" + action(); }
+            catch (Exception ex) { report = $"❌ Erreur '{operationName}' :\n{ex.Message}"; Debug.LogException(ex); }
         }
 
         private void ExportReport()
         {
             if (string.IsNullOrEmpty(report)) return;
-            string path = EditorUtility.SaveFilePanel("Exporter le rapport", "", "ZyumieAvatarReport.txt", "txt");
+            string path = EditorUtility.SaveFilePanel("Sauvegarder", "", "Zyumie_Rapport.txt", "txt");
             if (!string.IsNullOrEmpty(path)) File.WriteAllText(path, report);
         }
     }
